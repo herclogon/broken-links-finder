@@ -25,19 +25,20 @@ from bs4 import BeautifulSoup
 from collections import deque
 import logging
 from datetime import datetime
+import threading
 
 class BrokenLinksFinder:
     def __init__(self, start_url, max_depth=3, same_domain_only=True, state_file=None):
         self.start_url = start_url
         self.max_depth = max_depth
         self.same_domain_only = same_domain_only
-        
+
         # Generate unique state file name based on arguments if not provided
         if state_file is None:
             self.state_file = self._generate_state_filename()
         else:
             self.state_file = state_file
-        
+
         # Initialize state
         self.visited_urls = set()
         self.checked_urls = set()  # Track URLs that have been checked for status
@@ -45,17 +46,21 @@ class BrokenLinksFinder:
         self.urls_to_visit = deque()
         self.current_depth = 0
         self.interrupted = False
-        
+
+        # Watchdog timer to prevent hanging
+        self.last_activity = time.time()
+        self.watchdog_timeout = 300  # 5 minutes timeout
+
         # Get domain from start URL
         self.base_domain = urlparse(start_url).netloc
-        
+
         # Setup logging
         self.setup_logging()
-        
+
         # Setup signal handler for graceful interruption
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
-        
+
         # Session for connection pooling
         self.session = requests.Session()
         self.session.headers.update({
@@ -101,6 +106,20 @@ class BrokenLinksFinder:
         self.interrupted = True
         self.save_state()
         sys.exit(0)
+
+    def check_watchdog(self):
+        """Check if the watchdog timer has expired and show progress"""
+        current_time = time.time()
+        if current_time - self.last_activity > self.watchdog_timeout:
+            self.logger.info(f"Still working... ({len(self.visited_urls)} pages visited, "
+                           f"{len(self.broken_links)} broken links found, "
+                           f"{len(self.urls_to_visit)} pages remaining)")
+            # Reset the watchdog timer to continue monitoring
+            self.last_activity = current_time
+
+    def update_activity(self):
+        """Update the last activity timestamp"""
+        self.last_activity = time.time()
     
     def save_state(self):
         """Save current crawling state to file"""
@@ -193,21 +212,21 @@ class BrokenLinksFinder:
         try:
             response = self.session.get(url, timeout=15)
             response.raise_for_status()
-            
+
             soup = BeautifulSoup(response.content, 'html.parser')
             links = []
-            
+
             # Find all anchor tags with href
             for link in soup.find_all('a', href=True):
                 href = link['href']
                 absolute_url = urljoin(url, href)
                 normalized_url = self.normalize_url(absolute_url)
-                
+
                 if self.is_valid_url(normalized_url):
                     links.append(normalized_url)
-            
+
             return links, response.status_code
-            
+
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Failed to fetch {url}: {e}")
             return [], None
@@ -216,13 +235,16 @@ class BrokenLinksFinder:
         """Crawl a single page and check its links"""
         if url in self.visited_urls or depth > self.max_depth:
             return
-        
+
         self.visited_urls.add(url)
         self.logger.info(f"Crawling (depth {depth}): {url}")
-        
+
+        # Update activity timestamp
+        self.update_activity()
+
         # Extract links from the page
         links, status_code = self.extract_links_from_page(url)
-        
+
         if status_code is None:
             self.broken_links.append({
                 'url': url,
@@ -233,13 +255,17 @@ class BrokenLinksFinder:
             })
             self.logger.error(f"Failed to fetch page: {url}")
             return
-        
+
         self.logger.info(f"Found {len(links)} links on {url}")
-        
+
         # Check each link
         checked_count = 0
         skipped_count = 0
         for link in links:
+            # Update activity timestamp periodically
+            if checked_count % 10 == 0:
+                self.update_activity()
+
             # Skip if we've already checked this URL for status
             if link in self.checked_urls:
                 skipped_count += 1
@@ -248,16 +274,16 @@ class BrokenLinksFinder:
                 if link not in self.visited_urls and depth < self.max_depth and self.is_valid_url(link):
                     self.urls_to_visit.append((link, depth + 1))
                 continue
-            
+
             checked_count += 1
             self.logger.info(f"Checking link {checked_count}/{len(links)} (skipped {skipped_count}): {link}")
-            
+
             # Mark as checked to prevent future duplicate checks
             self.checked_urls.add(link)
-            
+
             # Check if link is broken
             status_code, reason = self.check_link_status(link)
-            
+
             if status_code is None or status_code >= 400:
                 self.broken_links.append({
                     'url': link,
@@ -269,13 +295,13 @@ class BrokenLinksFinder:
                 self.logger.warning(f"BROKEN LINK: {link} ({status_code} {reason})")
             else:
                 self.logger.info(f"OK: {link} ({status_code})")
-            
+
             # Add to queue for further crawling if within depth limit and not visited
             if link not in self.visited_urls and depth < self.max_depth and self.is_valid_url(link):
                 self.urls_to_visit.append((link, depth + 1))
-        
+
         self.logger.info(f"Completed page {url} - Found {len([l for l in self.broken_links if l['found_on'] == url])} broken links")
-        
+
         # Save state periodically
         if len(self.visited_urls) % 5 == 0:
             self.logger.info(f"Progress: {len(self.visited_urls)} pages visited, {len(self.broken_links)} broken links found, {len(self.urls_to_visit)} pages remaining")
@@ -287,27 +313,33 @@ class BrokenLinksFinder:
         if not self.load_state():
             # Start fresh
             self.urls_to_visit.append((self.start_url, 0))
-        
+
         self.logger.info(f"Starting broken link checker for: {self.start_url}")
         self.logger.info(f"Max depth: {self.max_depth}, Same domain only: {self.same_domain_only}")
         self.logger.info(f"State file: {self.state_file}")
-        
+
         try:
             while self.urls_to_visit and not self.interrupted:
+                # Check watchdog timer
+                self.check_watchdog()
+
                 url, depth = self.urls_to_visit.popleft()
                 self.current_depth = depth
-                
+
+                # Update activity timestamp
+                self.update_activity()
+
                 self.crawl_page(url, depth)
-                
+
                 # Small delay to be respectful to servers
                 time.sleep(0.5)
-            
+
             # Final save
             self.save_state()
-            
+
             # Generate report
             self.generate_report()
-            
+
         except KeyboardInterrupt:
             self.logger.info("Crawling interrupted by user")
             self.save_state()
