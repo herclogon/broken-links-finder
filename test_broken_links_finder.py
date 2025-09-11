@@ -217,11 +217,51 @@ class TestBrokenLinksFinder:
         """Test link extraction when page request fails"""
         checker = BrokenLinksFinder(self.test_url)
         test_url = "https://nonexistent.invalid"
-        
+
         links, status_code = checker.extract_links_from_page(test_url)
-        
+
         assert links == []
         assert status_code is None
+
+    @responses.activate
+    def test_extract_links_from_non_html_page(self):
+        """Test that non-HTML pages are skipped"""
+        checker = BrokenLinksFinder(self.test_url)
+        test_url = "https://example.com/document.pdf"
+
+        # Mock response with PDF content type
+        responses.add(
+            responses.GET,
+            test_url,
+            body=b"PDF content here",
+            status=200,
+            headers={'content-type': 'application/pdf'}
+        )
+
+        links, status_code = checker.extract_links_from_page(test_url)
+
+        assert links == []  # Should return empty list for non-HTML content
+        assert status_code == 200  # Status should still be returned
+
+    @responses.activate
+    def test_extract_links_from_video_page(self):
+        """Test that video files are skipped"""
+        checker = BrokenLinksFinder(self.test_url)
+        test_url = "https://example.com/video.mp4"
+
+        # Mock response with video content type
+        responses.add(
+            responses.GET,
+            test_url,
+            body=b"video content",
+            status=200,
+            headers={'content-type': 'video/mp4'}
+        )
+
+        links, status_code = checker.extract_links_from_page(test_url)
+
+        assert links == []  # Should return empty list for video content
+        assert status_code == 200
     
     def test_save_and_load_state(self):
         """Test state saving and loading"""

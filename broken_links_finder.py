@@ -365,6 +365,12 @@ class BrokenLinksFinder:
             response = self.session.get(url, timeout=15)
             response.raise_for_status()
 
+            # Check if the content is HTML
+            content_type = response.headers.get('content-type', '').lower()
+            if not content_type.startswith('text/html'):
+                self.logger.info(f"Skipping non-HTML content: {url} (Content-Type: {content_type})")
+                return [], response.status_code
+
             soup = BeautifulSoup(response.content, 'html.parser')
             links = []
 
