@@ -338,11 +338,6 @@ class BrokenLinksFinder:
                 self.urls_to_visit.append((link, depth + 1))
 
         self.logger.info(f"Completed page {url} - Found {len([l for l in self.broken_links if l['found_on'] == url])} broken links")
-
-        # Save state periodically
-        if len(self.visited_urls) % 5 == 0:
-            self.logger.info(f"Progress: {len(self.visited_urls)} pages visited, {len(self.broken_links)} broken links found, {len(self.urls_to_visit)} pages remaining")
-            self.save_state()
     
     def run(self):
         """Main crawling loop"""
