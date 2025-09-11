@@ -54,6 +54,7 @@ class BrokenLinksFinder:
         # Periodic state saving timer
         self.save_timer = None
         self.save_interval = 600  # 10 minutes in seconds
+        self.save_lock = threading.Lock()
 
         # Get domain from start URL
         self.base_domain = urlparse(start_url).netloc
@@ -171,8 +172,10 @@ class BrokenLinksFinder:
         }
         
         try:
-            with open(self.state_file, 'w') as f:
-                json.dump(state, f, indent=2)
+            self.logger.info("Starting state save...")
+            with self.save_lock:
+                with open(self.state_file, 'w') as f:
+                    json.dump(state, f)
             self.logger.info(f"State saved to {self.state_file}")
         except Exception as e:
             self.logger.error(f"Failed to save state: {e}")
