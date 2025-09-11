@@ -1,6 +1,14 @@
-# Broken Link Checker
+# Broken Links Finder 🔍
 
-A Python script that crawls web pages to find broken links with the ability to resume after interruption.
+[![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+A powerful Python script that crawls web pages to find broken links with intelligent resume capability and comprehensive reporting.
+
+## 🌟 Overview
+
+Broken Links Finder is a robust web crawler designed to help website owners and developers maintain healthy websites by identifying broken links. The tool features intelligent crawling, state persistence, and detailed reporting capabilities.
 
 ## Features
 
@@ -191,6 +199,137 @@ For more verbose output, modify the logging level in the script:
 logging.basicConfig(level=logging.DEBUG, ...)
 ```
 
-## License
+## 🧪 Testing
 
-This script is provided as-is for educational and practical use.
+The project includes a comprehensive test suite. To run tests:
+
+```bash
+# Run all tests
+python run_tests.py
+
+# Run tests with pytest directly
+pytest
+
+# Run tests with coverage
+pytest --cov=broken_link_checker
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+
+- How to set up the development environment
+- Code style guidelines
+- How to submit pull requests
+- Reporting bugs and requesting features
+
+### Quick Start for Contributors
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes and add tests
+4. Run the test suite: `python run_tests.py`
+5. Commit your changes: `git commit -m 'Add amazing feature'`
+6. Push to the branch: `git push origin feature/amazing-feature`
+7. Open a Pull Request
+
+## 📋 Requirements
+
+- Python 3.6 or higher
+- requests >= 2.25.1
+- beautifulsoup4 >= 4.9.3
+- lxml >= 4.6.3
+
+## 🚀 Quick Start
+
+1. **Clone the repository:**
+   ```bash
+   git clone git@github.com:herclogon/broken-links-finder.git
+   cd broken-links-finder
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Run your first scan:**
+   ```bash
+   python broken_link_checker.py https://example.com
+   ```
+
+4. **Check the results:**
+   - View the log: `broken_link_checker.log`
+   - Check the JSON report: `broken_links_report_*.json`
+
+## 📊 Use Cases
+
+- **Website Maintenance**: Regular health checks for production websites
+- **SEO Auditing**: Identify broken links that hurt search rankings
+- **Migration Testing**: Verify links after website migrations
+- **Quality Assurance**: Automated testing in CI/CD pipelines
+- **Content Management**: Maintain link integrity in large content sites
+
+## 🔧 Advanced Configuration
+
+### Custom User Agent
+```python
+checker = BrokenLinkChecker(start_url)
+checker.session.headers.update({'User-Agent': 'Your Custom User Agent'})
+```
+
+### Custom Timeouts
+```python
+# Modify timeout values in the check_link_status method
+response = self.session.head(url, timeout=30, allow_redirects=True)
+```
+
+### Custom State File Location
+```python
+checker = BrokenLinkChecker(start_url, state_file='custom_state.json')
+```
+
+## 📈 Performance Tips
+
+- **Start Small**: Begin with shallow depths (1-2) for large sites
+- **Monitor Resources**: Watch memory usage on very large sites
+- **Respect Rate Limits**: Increase delays if you encounter rate limiting
+- **Use Resume Feature**: For large scans, use Ctrl+C to pause and resume later
+
+## 🐛 Known Issues
+
+- JavaScript-generated links are not detected
+- Some sites may block automated requests
+- Very large sites may require significant memory
+- Rate limiting may slow down scans on some servers
+
+## 📝 Changelog
+
+### Version 1.0.0
+- Initial release
+- Basic broken link detection
+- Resume functionality
+- JSON reporting
+- Configurable depth and domain restrictions
+
+## 🙏 Acknowledgments
+
+- Built with [Requests](https://requests.readthedocs.io/) for HTTP handling
+- Uses [Beautiful Soup](https://www.crummy.com/software/BeautifulSoup/) for HTML parsing
+- Inspired by the need for reliable website health monitoring
+
+## 📞 Support
+
+If you encounter any issues or have questions:
+
+1. Check the [Issues](https://github.com/herclogon/broken-links-finder/issues) page
+2. Read the [Contributing Guide](CONTRIBUTING.md)
+3. Create a new issue with detailed information
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## ⭐ Star History
+
+If you find this project useful, please consider giving it a star on GitHub!

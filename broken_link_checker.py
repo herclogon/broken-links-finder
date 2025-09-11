@@ -19,6 +19,7 @@ import time
 import sys
 import signal
 import os
+import hashlib
 from urllib.parse import urljoin, urlparse, urldefrag
 from bs4 import BeautifulSoup
 from collections import deque
@@ -26,11 +27,16 @@ import logging
 from datetime import datetime
 
 class BrokenLinkChecker:
-    def __init__(self, start_url, max_depth=3, same_domain_only=True, state_file="crawler_state.json"):
+    def __init__(self, start_url, max_depth=3, same_domain_only=True, state_file=None):
         self.start_url = start_url
         self.max_depth = max_depth
         self.same_domain_only = same_domain_only
-        self.state_file = state_file
+        
+        # Generate unique state file name based on arguments if not provided
+        if state_file is None:
+            self.state_file = self._generate_state_filename()
+        else:
+            self.state_file = state_file
         
         # Initialize state
         self.visited_urls = set()
@@ -54,6 +60,27 @@ class BrokenLinkChecker:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (compatible; BrokenLinkChecker/1.0)'
         })
+    
+    def _generate_state_filename(self):
+        """Generate a unique state filename based on the argument set"""
+        # Create a string representation of the configuration
+        config_string = f"{self.start_url}|{self.max_depth}|{self.same_domain_only}"
+        
+        # Create a hash of the configuration for uniqueness
+        config_hash = hashlib.md5(config_string.encode('utf-8')).hexdigest()[:8]
+        
+        # Extract domain name for readability
+        domain = urlparse(self.start_url).netloc.replace('www.', '')
+        # Clean domain name for filename (remove invalid characters)
+        clean_domain = ''.join(c for c in domain if c.isalnum() or c in '.-').rstrip('.')
+        
+        # Create descriptive filename
+        depth_str = f"depth{self.max_depth}"
+        domain_str = "same-domain" if self.same_domain_only else "all-domains"
+        
+        filename = f"crawler_state_{clean_domain}_{depth_str}_{domain_str}_{config_hash}.json"
+        
+        return filename
     
     def setup_logging(self):
         """Setup logging configuration"""
@@ -247,6 +274,7 @@ class BrokenLinkChecker:
         
         self.logger.info(f"Starting broken link checker for: {self.start_url}")
         self.logger.info(f"Max depth: {self.max_depth}, Same domain only: {self.same_domain_only}")
+        self.logger.info(f"State file: {self.state_file}")
         
         try:
             while self.urls_to_visit and not self.interrupted:
@@ -355,11 +383,13 @@ EXAMPLES:
     python broken_link_checker.py https://example.com 0
 
 RESUME FUNCTIONALITY:
-    The script automatically saves progress to 'crawler_state.json'
+    The script automatically saves progress to a unique state file based on your arguments
+    State files are named: crawler_state_<domain>_depth<N>_<domain-mode>_<hash>.json
     If interrupted (Ctrl+C), run the same command to resume from where it stopped
+    Different argument sets will use different state files, allowing parallel crawls
 
 OUTPUT FILES:
-    - crawler_state.json: State file for resume functionality
+    - crawler_state_<domain>_depth<N>_<domain-mode>_<hash>.json: State file for resume functionality
     - broken_link_checker.log: Detailed log file
     - broken_links_report_YYYYMMDD_HHMMSS.json: Final report
 
