@@ -119,7 +119,7 @@ The script automatically saves its progress to `crawler_state.json`. If the scri
 The script generates several output files:
 
 - `crawler_state.json`: State file for resume functionality
-- `broken_link_checker.log`: Detailed log file
+- `broken_links_finder.log`: Detailed log file
 - `broken_links_report_YYYYMMDD_HHMMSS.json`: Final report with all findings
 
 ## Report Format
@@ -282,7 +282,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
    ```
 
 4. **Check the results:**
-   - View the log: `broken_link_checker.log`
+   - View the log: `broken_links_finder.log`
    - Check the JSON report: `broken_links_report_*.json`
 
 ## 📊 Use Cases

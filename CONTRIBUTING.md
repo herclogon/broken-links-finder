@@ -78,10 +78,10 @@ We welcome several types of contributions:
 
 ```
 broken-links-finder/
-├── broken_link_checker.py    # Main script
+├── broken_links_finder.py    # Main script
 ├── requirements.txt          # Production dependencies
 ├── test_requirements.txt     # Test dependencies
-├── test_broken_link_checker.py  # Test suite
+├── test_broken_links_finder.py  # Test suite
 ├── run_tests.py             # Test runner
 ├── pytest.ini              # Pytest configuration
 ├── README.md                # Project documentation
@@ -105,10 +105,10 @@ python run_tests.py
 pytest
 
 # Run tests with coverage
-pytest --cov=broken_link_checker
+pytest --cov=broken_links_finder
 
 # Run specific test
-pytest test_broken_link_checker.py::TestBrokenLinkChecker::test_specific_function
+pytest test_broken_links_finder.py::TestBrokenLinkChecker::test_specific_function
 ```
 
 ### Writing Tests

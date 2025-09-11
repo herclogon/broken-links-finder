@@ -89,7 +89,7 @@ class BrokenLinkChecker:
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler('broken_link_checker.log'),
+                logging.FileHandler('broken_links_finder.log'),
                 logging.StreamHandler(sys.stdout)
             ]
         )
@@ -406,7 +406,7 @@ RESUME FUNCTIONALITY:
 
 OUTPUT FILES:
     - crawler_state_<domain>_depth<N>_<domain-mode>_<hash>.json: State file for resume functionality
-    - broken_link_checker.log: Detailed log file
+    - broken_links_finder.log: Detailed log file
     - broken_links_report_YYYYMMDD_HHMMSS.json: Final report
 
 INTERRUPTION:
