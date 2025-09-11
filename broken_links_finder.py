@@ -39,6 +39,9 @@ class BrokenLinksFinder:
         else:
             self.state_file = state_file
 
+        # Generate broken links file name
+        self.broken_links_file = self._generate_broken_links_filename()
+
         # Initialize state
         self.visited_urls = set()
         self.checked_urls = set()  # Track URLs that have been checked for status
@@ -90,7 +93,28 @@ class BrokenLinksFinder:
         domain_str = "same-domain" if self.same_domain_only else "all-domains"
         
         filename = f"crawler_state_{clean_domain}_{depth_str}_{domain_str}_{config_hash}.json"
-        
+
+        return filename
+
+    def _generate_broken_links_filename(self):
+        """Generate a unique broken links filename based on the argument set"""
+        # Create a string representation of the configuration
+        config_string = f"{self.start_url}|{self.max_depth}|{self.same_domain_only}"
+
+        # Create a hash of the configuration for uniqueness
+        config_hash = hashlib.md5(config_string.encode('utf-8')).hexdigest()[:8]
+
+        # Extract domain name for readability
+        domain = urlparse(self.start_url).netloc.replace('www.', '')
+        # Clean domain name for filename (remove invalid characters)
+        clean_domain = ''.join(c for c in domain if c.isalnum() or c in '.-').rstrip('.')
+
+        # Create descriptive filename
+        depth_str = f"depth{self.max_depth}"
+        domain_str = "same-domain" if self.same_domain_only else "all-domains"
+
+        filename = f"broken_links_{clean_domain}_{depth_str}_{domain_str}_{config_hash}.json"
+
         return filename
     
     def setup_logging(self):
@@ -111,6 +135,7 @@ class BrokenLinksFinder:
         self.interrupted = True
         self.stop_periodic_save()
         self.save_state()
+        self.save_broken_links()
         sys.exit(0)
 
     def check_watchdog(self):
@@ -149,6 +174,7 @@ class BrokenLinksFinder:
         try:
             self.logger.info("Periodic state save triggered")
             self.save_state()
+            self.save_broken_links()
             # Restart the timer for the next interval
             self.start_periodic_save()
         except Exception as e:
@@ -156,6 +182,25 @@ class BrokenLinksFinder:
             # Still try to restart the timer even if save failed
             self.start_periodic_save()
     
+    def save_broken_links(self):
+        """Save broken links to separate file"""
+        broken_links_data = {
+            'start_url': self.start_url,
+            'max_depth': self.max_depth,
+            'same_domain_only': self.same_domain_only,
+            'broken_links': self.broken_links,
+            'total_broken_links': len(self.broken_links),
+            'timestamp': datetime.now().isoformat()
+        }
+
+        try:
+            with self.save_lock:
+                with open(self.broken_links_file, 'w') as f:
+                    json.dump(broken_links_data, f)
+            self.logger.info(f"Broken links saved to {self.broken_links_file} ({len(self.broken_links)} links)")
+        except Exception as e:
+            self.logger.error(f"Failed to save broken links: {e}")
+
     def save_state(self):
         """Save current crawling state to file"""
         state = {
@@ -164,13 +209,12 @@ class BrokenLinksFinder:
             'same_domain_only': self.same_domain_only,
             'visited_urls': list(self.visited_urls),
             'checked_urls': list(self.checked_urls),
-            'broken_links': self.broken_links,
             'urls_to_visit': list(self.urls_to_visit),
             'current_depth': self.current_depth,
             'base_domain': self.base_domain,
             'timestamp': datetime.now().isoformat()
         }
-        
+
         try:
             self.logger.info("Starting state save...")
             with self.save_lock:
@@ -185,27 +229,41 @@ class BrokenLinksFinder:
         if not os.path.exists(self.state_file):
             self.logger.info("No previous state file found. Starting fresh.")
             return False
-        
+
         try:
             with open(self.state_file, 'r') as f:
                 state = json.load(f)
-            
+
             self.start_url = state['start_url']
             self.max_depth = state['max_depth']
             self.same_domain_only = state['same_domain_only']
             self.visited_urls = set(state['visited_urls'])
             self.checked_urls = set(state.get('checked_urls', []))  # Use get() for backward compatibility
-            self.broken_links = state['broken_links']
             self.urls_to_visit = deque(state['urls_to_visit'])
             self.current_depth = state['current_depth']
             self.base_domain = state['base_domain']
-            
+
+            # Load broken links from separate file if it exists
+            if os.path.exists(self.broken_links_file):
+                try:
+                    with open(self.broken_links_file, 'r') as f:
+                        broken_links_data = json.load(f)
+                    self.broken_links = broken_links_data.get('broken_links', [])
+                    self.logger.info(f"Loaded {len(self.broken_links)} broken links from {self.broken_links_file}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to load broken links file: {e}. Starting with empty list.")
+                    self.broken_links = []
+            else:
+                # For backward compatibility, try to get broken_links from state file
+                self.broken_links = state.get('broken_links', [])
+                self.logger.info("No separate broken links file found, using data from state file")
+
             self.logger.info(f"Resumed from state file. Visited: {len(self.visited_urls)}, "
                            f"Checked: {len(self.checked_urls)}, "
                            f"To visit: {len(self.urls_to_visit)}, "
                            f"Broken links found: {len(self.broken_links)}")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Failed to load state: {e}")
             return False
@@ -338,6 +396,11 @@ class BrokenLinksFinder:
                 self.urls_to_visit.append((link, depth + 1))
 
         self.logger.info(f"Completed page {url} - Found {len([l for l in self.broken_links if l['found_on'] == url])} broken links")
+
+        # Save broken links periodically if we found new ones
+        page_broken_count = len([l for l in self.broken_links if l['found_on'] == url])
+        if page_broken_count > 0:
+            self.save_broken_links()
     
     def run(self):
         """Main crawling loop"""
@@ -371,6 +434,7 @@ class BrokenLinksFinder:
 
             # Final save
             self.save_state()
+            self.save_broken_links()
 
             # Generate report
             self.generate_report()
@@ -378,6 +442,7 @@ class BrokenLinksFinder:
         except KeyboardInterrupt:
             self.logger.info("Crawling interrupted by user")
             self.save_state()
+            self.save_broken_links()
         except Exception as e:
             self.logger.error(f"Unexpected error: {e}")
             self.save_state()
