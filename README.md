@@ -1,6 +1,6 @@
 # Broken Links Finder 🔍
 
-[![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.7%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -22,7 +22,18 @@ Broken Links Finder is a robust web crawler designed to help website owners and 
 
 ## Installation
 
-1. Install Python 3.6 or higher
+### Using uv (Recommended)
+
+1. Install Python 3.7 or higher
+2. Install [uv](https://docs.astral.sh/uv/) if you haven't already
+3. Install dependencies:
+   ```bash
+   uv sync
+   ```
+
+### Using pip (Alternative)
+
+1. Install Python 3.7 or higher
 2. Install required dependencies:
    ```bash
    pip install -r requirements.txt
@@ -235,7 +246,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## 📋 Requirements
 
-- Python 3.6 or higher
+- Python 3.7 or higher
 - requests >= 2.25.1
 - beautifulsoup4 >= 4.9.3
 - lxml >= 4.6.3
@@ -249,6 +260,13 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
    ```
 
 2. **Install dependencies:**
+   
+   Using uv (recommended):
+   ```bash
+   uv sync
+   ```
+   
+   Or using pip:
    ```bash
    pip install -r requirements.txt
    ```
@@ -256,6 +274,11 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 3. **Run your first scan:**
    ```bash
    python broken_links_finder.py https://example.com
+   ```
+   
+   Or with uv:
+   ```bash
+   uv run python broken_links_finder.py https://example.com
    ```
 
 4. **Check the results:**
