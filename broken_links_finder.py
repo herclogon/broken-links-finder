@@ -26,6 +26,31 @@ from collections import deque
 import logging
 from datetime import datetime
 import threading
+import serpy
+
+class StateObject:
+    def __init__(self, data):
+        for key, value in data.items():
+            setattr(self, key, value)
+
+class StateSerializer(serpy.Serializer):
+    start_url = serpy.StrField()
+    max_depth = serpy.IntField()
+    same_domain_only = serpy.BoolField()
+    visited_urls = serpy.Field()
+    checked_urls = serpy.Field()
+    urls_to_visit = serpy.Field()
+    current_depth = serpy.IntField()
+    base_domain = serpy.StrField()
+    timestamp = serpy.StrField()
+
+class BrokenLinksSerializer(serpy.Serializer):
+    start_url = serpy.StrField()
+    max_depth = serpy.IntField()
+    same_domain_only = serpy.BoolField()
+    broken_links = serpy.Field()
+    total_broken_links = serpy.IntField()
+    timestamp = serpy.StrField()
 
 class BrokenLinksFinder:
     def __init__(self, start_url, max_depth=3, same_domain_only=True, state_file=None):
@@ -116,6 +141,38 @@ class BrokenLinksFinder:
         filename = f"broken_links_{clean_domain}_{depth_str}_{domain_str}_{config_hash}.json"
 
         return filename
+
+    def _parse_broken_links_file(self, file_path):
+        """Parse the plain text broken links file"""
+        broken_links = []
+        current_link = {}
+
+        try:
+            with open(file_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("Broken Link: "):
+                        if current_link:
+                            broken_links.append(current_link)
+                        current_link = {'url': line[13:]}  # Remove "Broken Link: "
+                    elif line.startswith("Status: "):
+                        current_link['status'] = line[8:]  # Remove "Status: "
+                    elif line.startswith("Found On: "):
+                        current_link['found_on'] = line[10:]  # Remove "Found On: "
+                    elif line.startswith("Depth: "):
+                        current_link['depth'] = int(line[7:])  # Remove "Depth: "
+                    elif line.startswith("Timestamp: "):
+                        current_link['timestamp'] = line[11:]  # Remove "Timestamp: "
+
+                # Add the last link if exists
+                if current_link:
+                    broken_links.append(current_link)
+
+        except Exception as e:
+            self.logger.error(f"Error parsing broken links file: {e}")
+            return []
+
+        return broken_links
     
     def setup_logging(self):
         """Setup logging configuration"""
@@ -183,20 +240,24 @@ class BrokenLinksFinder:
             self.start_periodic_save()
     
     def save_broken_links(self):
-        """Save broken links to separate file"""
-        broken_links_data = {
-            'start_url': self.start_url,
-            'max_depth': self.max_depth,
-            'same_domain_only': self.same_domain_only,
-            'broken_links': self.broken_links,
-            'total_broken_links': len(self.broken_links),
-            'timestamp': datetime.now().isoformat()
-        }
-
+        """Save broken links to separate file in plain text"""
         try:
             with self.save_lock:
                 with open(self.broken_links_file, 'w') as f:
-                    json.dump(broken_links_data, f)
+                    f.write(f"Broken Links Report\n")
+                    f.write(f"Start URL: {self.start_url}\n")
+                    f.write(f"Max Depth: {self.max_depth}\n")
+                    f.write(f"Same Domain Only: {self.same_domain_only}\n")
+                    f.write(f"Total Broken Links: {len(self.broken_links)}\n")
+                    f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+                    f.write("-" * 50 + "\n")
+                    for link in self.broken_links:
+                        f.write(f"Broken Link: {link['url']}\n")
+                        f.write(f"Status: {link['status']}\n")
+                        f.write(f"Found On: {link['found_on']}\n")
+                        f.write(f"Depth: {link['depth']}\n")
+                        f.write(f"Timestamp: {link['timestamp']}\n")
+                        f.write("-" * 30 + "\n")
             self.logger.info(f"Broken links saved to {self.broken_links_file} ({len(self.broken_links)} links)")
         except Exception as e:
             self.logger.error(f"Failed to save broken links: {e}")
@@ -219,7 +280,9 @@ class BrokenLinksFinder:
             self.logger.info("Starting state save...")
             with self.save_lock:
                 with open(self.state_file, 'w') as f:
-                    json.dump(state, f)
+                    state_obj = StateObject(state)
+                    serializer = StateSerializer(state_obj)
+                    json.dump(serializer.data, f)
             self.logger.info(f"State saved to {self.state_file}")
         except Exception as e:
             self.logger.error(f"Failed to save state: {e}")
@@ -246,9 +309,7 @@ class BrokenLinksFinder:
             # Load broken links from separate file if it exists
             if os.path.exists(self.broken_links_file):
                 try:
-                    with open(self.broken_links_file, 'r') as f:
-                        broken_links_data = json.load(f)
-                    self.broken_links = broken_links_data.get('broken_links', [])
+                    self.broken_links = self._parse_broken_links_file(self.broken_links_file)
                     self.logger.info(f"Loaded {len(self.broken_links)} broken links from {self.broken_links_file}")
                 except Exception as e:
                     self.logger.warning(f"Failed to load broken links file: {e}. Starting with empty list.")
