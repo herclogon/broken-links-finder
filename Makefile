@@ -34,47 +34,45 @@ help:
 
 # Install all dependencies
 setup:
-	@echo "Installing main dependencies..."
-	pip install -r requirements.txt
-	@echo "Installing test dependencies..."
-	pip install -r test_requirements.txt
+	@echo "Installing dependencies with uv..."
+	uv sync --extra dev
 	@echo "✅ All dependencies installed"
 
 # Install test dependencies only
 install:
-	@echo "Installing test dependencies..."
-	pip install -r test_requirements.txt
-	@echo "✅ Test dependencies installed"
+	@echo "Installing dependencies with uv..."
+	uv sync --extra dev
+	@echo "✅ Dependencies installed"
 
 # Run all tests with coverage (default)
 test:
 	@echo "Running all tests with coverage..."
-	python run_tests.py --all
+	uv run python run_tests.py --all
 
 # Run unit tests only
 test-unit:
 	@echo "Running unit tests..."
-	python run_tests.py --unit
+	uv run python run_tests.py --unit
 
 # Run integration tests only
 test-integration:
 	@echo "Running integration tests..."
-	python run_tests.py --integration
+	uv run python run_tests.py --integration
 
 # Run CLI tests only
 test-cli:
 	@echo "Running CLI tests..."
-	python run_tests.py --cli
+	uv run python run_tests.py --cli
 
 # Run quick tests without coverage
 test-quick:
 	@echo "Running quick tests..."
-	python run_tests.py --quick
+	uv run python run_tests.py --quick
 
 # Run code linting
 lint:
 	@echo "Running code linting..."
-	python run_tests.py --lint
+	uv run python run_tests.py --lint
 
 # Generate coverage report
 coverage: test

@@ -47,7 +47,7 @@ def run_unit_tests():
     """Run unit tests only"""
     return run_command([
         sys.executable, "-m", "pytest", 
-        "test_broken_link_checker.py::TestBrokenLinkChecker",
+        "test_broken_links_finder.py::TestBrokenLinkChecker",
         "-v"
     ], "Unit tests")
 
@@ -56,7 +56,7 @@ def run_integration_tests():
     """Run integration tests only"""
     return run_command([
         sys.executable, "-m", "pytest", 
-        "test_broken_link_checker.py::TestIntegration",
+        "test_broken_links_finder.py::TestIntegration",
         "-v"
     ], "Integration tests")
 
@@ -65,7 +65,7 @@ def run_cli_tests():
     """Run CLI tests only"""
     return run_command([
         sys.executable, "-m", "pytest", 
-        "test_broken_link_checker.py::TestMainFunction",
+        "test_broken_links_finder.py::TestMainFunction",
         "-v"
     ], "CLI tests")
 
@@ -74,9 +74,9 @@ def run_all_tests():
     """Run all tests with coverage"""
     return run_command([
         sys.executable, "-m", "pytest", 
-        "test_broken_link_checker.py",
+        "test_broken_links_finder.py",
         "-v",
-        "--cov=broken_link_checker",
+        "--cov=broken_links_finder",
         "--cov-report=term-missing",
         "--cov-report=html:htmlcov"
     ], "All tests with coverage")
@@ -86,7 +86,7 @@ def run_quick_tests():
     """Run tests without coverage for quick feedback"""
     return run_command([
         sys.executable, "-m", "pytest", 
-        "test_broken_link_checker.py",
+        "test_broken_links_finder.py",
         "-v",
         "--tb=short"
     ], "Quick tests (no coverage)")
@@ -96,7 +96,7 @@ def run_specific_test(test_name):
     """Run a specific test"""
     return run_command([
         sys.executable, "-m", "pytest", 
-        f"test_broken_link_checker.py::{test_name}",
+        f"test_broken_links_finder.py::{test_name}",
         "-v", "-s"
     ], f"Specific test: {test_name}")
 
@@ -111,7 +111,7 @@ def lint_code():
                       check=True, capture_output=True)
         return run_command([
             sys.executable, "-m", "flake8", 
-            "broken_link_checker.py", "test_broken_link_checker.py",
+            "broken_links_finder.py", "test_broken_links_finder.py",
             "--max-line-length=100",
             "--ignore=E501,W503"
         ], "Code linting with flake8")
