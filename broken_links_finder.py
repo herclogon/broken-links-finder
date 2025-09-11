@@ -40,6 +40,7 @@ class BrokenLinkChecker:
         
         # Initialize state
         self.visited_urls = set()
+        self.checked_urls = set()  # Track URLs that have been checked for status
         self.broken_links = []
         self.urls_to_visit = deque()
         self.current_depth = 0
@@ -108,6 +109,7 @@ class BrokenLinkChecker:
             'max_depth': self.max_depth,
             'same_domain_only': self.same_domain_only,
             'visited_urls': list(self.visited_urls),
+            'checked_urls': list(self.checked_urls),
             'broken_links': self.broken_links,
             'urls_to_visit': list(self.urls_to_visit),
             'current_depth': self.current_depth,
@@ -136,12 +138,14 @@ class BrokenLinkChecker:
             self.max_depth = state['max_depth']
             self.same_domain_only = state['same_domain_only']
             self.visited_urls = set(state['visited_urls'])
+            self.checked_urls = set(state.get('checked_urls', []))  # Use get() for backward compatibility
             self.broken_links = state['broken_links']
             self.urls_to_visit = deque(state['urls_to_visit'])
             self.current_depth = state['current_depth']
             self.base_domain = state['base_domain']
             
             self.logger.info(f"Resumed from state file. Visited: {len(self.visited_urls)}, "
+                           f"Checked: {len(self.checked_urls)}, "
                            f"To visit: {len(self.urls_to_visit)}, "
                            f"Broken links found: {len(self.broken_links)}")
             return True
@@ -234,29 +238,41 @@ class BrokenLinkChecker:
         
         # Check each link
         checked_count = 0
+        skipped_count = 0
         for link in links:
-            if link not in self.visited_urls:
-                checked_count += 1
-                self.logger.info(f"Checking link {checked_count}/{len(links)}: {link}")
-                
-                # Check if link is broken
-                status_code, reason = self.check_link_status(link)
-                
-                if status_code is None or status_code >= 400:
-                    self.broken_links.append({
-                        'url': link,
-                        'status': f"{status_code} {reason}" if status_code else reason,
-                        'found_on': url,
-                        'depth': depth + 1,
-                        'timestamp': datetime.now().isoformat()
-                    })
-                    self.logger.warning(f"BROKEN LINK: {link} ({status_code} {reason})")
-                else:
-                    self.logger.info(f"OK: {link} ({status_code})")
-                
-                # Add to queue for further crawling if within depth limit
-                if depth < self.max_depth and self.is_valid_url(link):
+            # Skip if we've already checked this URL for status
+            if link in self.checked_urls:
+                skipped_count += 1
+                self.logger.debug(f"Skipping already checked URL: {link}")
+                # Still add to crawling queue if it's a page we haven't visited
+                if link not in self.visited_urls and depth < self.max_depth and self.is_valid_url(link):
                     self.urls_to_visit.append((link, depth + 1))
+                continue
+            
+            checked_count += 1
+            self.logger.info(f"Checking link {checked_count}/{len(links)} (skipped {skipped_count}): {link}")
+            
+            # Mark as checked to prevent future duplicate checks
+            self.checked_urls.add(link)
+            
+            # Check if link is broken
+            status_code, reason = self.check_link_status(link)
+            
+            if status_code is None or status_code >= 400:
+                self.broken_links.append({
+                    'url': link,
+                    'status': f"{status_code} {reason}" if status_code else reason,
+                    'found_on': url,
+                    'depth': depth + 1,
+                    'timestamp': datetime.now().isoformat()
+                })
+                self.logger.warning(f"BROKEN LINK: {link} ({status_code} {reason})")
+            else:
+                self.logger.info(f"OK: {link} ({status_code})")
+            
+            # Add to queue for further crawling if within depth limit and not visited
+            if link not in self.visited_urls and depth < self.max_depth and self.is_valid_url(link):
+                self.urls_to_visit.append((link, depth + 1))
         
         self.logger.info(f"Completed page {url} - Found {len([l for l in self.broken_links if l['found_on'] == url])} broken links")
         
