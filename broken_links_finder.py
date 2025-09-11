@@ -345,8 +345,8 @@ def print_help():
 Broken Link Checker - Find broken links on websites with resume capability
 
 USAGE:
-    python broken_link_checker.py <start_url> [max_depth] [same_domain_only]
-    python broken_link_checker.py --help
+    python broken_links_finder.py <start_url> [max_depth] [same_domain_only]
+    python broken_links_finder.py --help
 
 ARGUMENTS:
     start_url           The URL to start crawling from (required)
@@ -368,19 +368,19 @@ ARGUMENTS:
 
 EXAMPLES:
     # Basic crawl of a website (depth 3, same domain only)
-    python broken_link_checker.py https://example.com
+    python broken_links_finder.py https://example.com
 
     # Shallow crawl with depth 1
-    python broken_link_checker.py https://example.com 1
+    python broken_links_finder.py https://example.com 1
 
     # Deep crawl with depth 5, same domain only
-    python broken_link_checker.py https://example.com 5 true
+    python broken_links_finder.py https://example.com 5 true
 
     # Crawl with external domains allowed
-    python broken_link_checker.py https://example.com 2 false
+    python broken_links_finder.py https://example.com 2 false
 
     # Quick check of just the homepage
-    python broken_link_checker.py https://example.com 0
+    python broken_links_finder.py https://example.com 0
 
 RESUME FUNCTIONALITY:
     The script automatically saves progress to a unique state file based on your arguments
@@ -412,10 +412,10 @@ def main():
     
     if len(sys.argv) < 2:
         print("ERROR: Missing required argument <start_url>")
-        print("\nUsage: python broken_link_checker.py <start_url> [max_depth] [same_domain_only]")
-        print("       python broken_link_checker.py --help")
-        print("\nExample: python broken_link_checker.py https://example.com 2 true")
-        print("\nFor detailed help, run: python broken_link_checker.py --help")
+        print("\nUsage: python broken_links_finder.py <start_url> [max_depth] [same_domain_only]")
+        print("       python broken_links_finder.py --help")
+        print("\nExample: python broken_links_finder.py https://example.com 2 true")
+        print("\nFor detailed help, run: python broken_links_finder.py --help")
         sys.exit(1)
     
     start_url = sys.argv[1]
@@ -436,7 +436,7 @@ def main():
                 sys.exit(1)
         except ValueError:
             print(f"ERROR: max_depth must be a number, got '{sys.argv[2]}'")
-            print("Example: python broken_link_checker.py https://example.com 2")
+            print("Example: python broken_links_finder.py https://example.com 2")
             sys.exit(1)
     
     # Parse same_domain_only with validation
@@ -449,7 +449,7 @@ def main():
             same_domain_only = False
         else:
             print(f"ERROR: same_domain_only must be 'true' or 'false', got '{sys.argv[3]}'")
-            print("Example: python broken_link_checker.py https://example.com 2 false")
+            print("Example: python broken_links_finder.py https://example.com 2 false")
             sys.exit(1)
     
     print(f"Starting broken link checker with:")

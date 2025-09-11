@@ -22,7 +22,7 @@ import requests
 from datetime import datetime
 
 # Import the module under test
-from broken_link_checker import BrokenLinkChecker, main, print_help
+from broken_links_finder import BrokenLinkChecker, main, print_help
 
 
 class TestBrokenLinkChecker:
@@ -278,8 +278,8 @@ class TestBrokenLinkChecker:
         loaded = checker.load_state()
         assert loaded == False
     
-    @patch('broken_link_checker.BrokenLinkChecker.extract_links_from_page')
-    @patch('broken_link_checker.BrokenLinkChecker.check_link_status')
+    @patch('broken_links_finder.BrokenLinkChecker.extract_links_from_page')
+    @patch('broken_links_finder.BrokenLinkChecker.check_link_status')
     def test_crawl_page(self, mock_check_status, mock_extract_links):
         """Test crawling a single page"""
         checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
@@ -301,7 +301,7 @@ class TestBrokenLinkChecker:
         assert checker.broken_links[0]['status'] == "404 Not Found"
         assert len(checker.urls_to_visit) == 2  # Both links added for further crawling
     
-    @patch('broken_link_checker.BrokenLinkChecker.extract_links_from_page')
+    @patch('broken_links_finder.BrokenLinkChecker.extract_links_from_page')
     def test_crawl_page_max_depth_exceeded(self, mock_extract_links):
         """Test that crawling stops at max depth"""
         checker = BrokenLinkChecker(self.test_url, max_depth=1, state_file=self.state_file)
@@ -313,7 +313,7 @@ class TestBrokenLinkChecker:
         assert "https://example.com/test" not in checker.visited_urls
         mock_extract_links.assert_not_called()
     
-    @patch('broken_link_checker.BrokenLinkChecker.extract_links_from_page')
+    @patch('broken_links_finder.BrokenLinkChecker.extract_links_from_page')
     def test_crawl_page_already_visited(self, mock_extract_links):
         """Test that already visited pages are skipped"""
         checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
@@ -327,7 +327,7 @@ class TestBrokenLinkChecker:
         # Should not have been processed again
         mock_extract_links.assert_not_called()
     
-    @patch('broken_link_checker.BrokenLinkChecker.extract_links_from_page')
+    @patch('broken_links_finder.BrokenLinkChecker.extract_links_from_page')
     def test_crawl_page_failed_to_fetch(self, mock_extract_links):
         """Test handling of pages that fail to fetch"""
         checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
@@ -344,10 +344,10 @@ class TestBrokenLinkChecker:
         assert checker.broken_links[0]['url'] == "https://example.com/test"
         assert checker.broken_links[0]['status'] == "Failed to fetch"
     
-    @patch('broken_link_checker.BrokenLinkChecker.crawl_page')
-    @patch('broken_link_checker.BrokenLinkChecker.load_state')
-    @patch('broken_link_checker.BrokenLinkChecker.save_state')
-    @patch('broken_link_checker.BrokenLinkChecker.generate_report')
+    @patch('broken_links_finder.BrokenLinkChecker.crawl_page')
+    @patch('broken_links_finder.BrokenLinkChecker.load_state')
+    @patch('broken_links_finder.BrokenLinkChecker.save_state')
+    @patch('broken_links_finder.BrokenLinkChecker.generate_report')
     def test_run_fresh_start(self, mock_report, mock_save, mock_load, mock_crawl):
         """Test running with fresh start (no previous state)"""
         checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
@@ -370,10 +370,10 @@ class TestBrokenLinkChecker:
         mock_save.assert_called()
         mock_report.assert_called_once()
     
-    @patch('broken_link_checker.BrokenLinkChecker.crawl_page')
-    @patch('broken_link_checker.BrokenLinkChecker.load_state')
-    @patch('broken_link_checker.BrokenLinkChecker.save_state')
-    @patch('broken_link_checker.BrokenLinkChecker.generate_report')
+    @patch('broken_links_finder.BrokenLinkChecker.crawl_page')
+    @patch('broken_links_finder.BrokenLinkChecker.load_state')
+    @patch('broken_links_finder.BrokenLinkChecker.save_state')
+    @patch('broken_links_finder.BrokenLinkChecker.generate_report')
     def test_run_resume_from_state(self, mock_report, mock_save, mock_load, mock_crawl):
         """Test running with resumed state"""
         checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
@@ -450,7 +450,7 @@ class TestMainFunction:
         assert "USAGE:" in captured.out
         assert "EXAMPLES:" in captured.out
     
-    @patch('sys.argv', ['broken_link_checker.py', '--help'])
+    @patch('sys.argv', ['broken_links_finder.py', '--help'])
     @patch('sys.exit')
     def test_main_help_flag(self, mock_exit, capsys):
         """Test main function with help flag"""
@@ -461,7 +461,7 @@ class TestMainFunction:
         captured = capsys.readouterr()
         assert "Broken Link Checker" in captured.out
     
-    @patch('sys.argv', ['broken_link_checker.py'])
+    @patch('sys.argv', ['broken_links_finder.py'])
     @patch('sys.exit')
     def test_main_missing_url(self, mock_exit, capsys):
         """Test main function with missing URL argument"""
@@ -473,7 +473,7 @@ class TestMainFunction:
         captured = capsys.readouterr()
         assert "ERROR: Missing required argument" in captured.out
     
-    @patch('sys.argv', ['broken_link_checker.py', 'invalid-url'])
+    @patch('sys.argv', ['broken_links_finder.py', 'invalid-url'])
     @patch('sys.exit')
     def test_main_invalid_url(self, mock_exit, capsys):
         """Test main function with invalid URL"""
@@ -482,7 +482,7 @@ class TestMainFunction:
         captured = capsys.readouterr()
         assert "ERROR: Invalid URL" in captured.out
     
-    @patch('sys.argv', ['broken_link_checker.py', 'https://example.com', 'abc'])
+    @patch('sys.argv', ['broken_links_finder.py', 'https://example.com', 'abc'])
     @patch('sys.exit')
     def test_main_invalid_depth(self, mock_exit, capsys):
         """Test main function with invalid depth"""
@@ -491,7 +491,7 @@ class TestMainFunction:
         captured = capsys.readouterr()
         assert "ERROR: max_depth must be a number" in captured.out
     
-    @patch('sys.argv', ['broken_link_checker.py', 'https://example.com', '-1'])
+    @patch('sys.argv', ['broken_links_finder.py', 'https://example.com', '-1'])
     @patch('sys.exit')
     def test_main_negative_depth(self, mock_exit, capsys):
         """Test main function with negative depth"""
@@ -500,7 +500,7 @@ class TestMainFunction:
         captured = capsys.readouterr()
         assert "ERROR: max_depth must be 0 or greater" in captured.out
     
-    @patch('sys.argv', ['broken_link_checker.py', 'https://example.com', '2', 'maybe'])
+    @patch('sys.argv', ['broken_links_finder.py', 'https://example.com', '2', 'maybe'])
     @patch('sys.exit')
     def test_main_invalid_domain_flag(self, mock_exit, capsys):
         """Test main function with invalid domain flag"""
@@ -509,8 +509,8 @@ class TestMainFunction:
         captured = capsys.readouterr()
         assert "ERROR: same_domain_only must be 'true' or 'false'" in captured.out
     
-    @patch('sys.argv', ['broken_link_checker.py', 'https://example.com', '2', 'false'])
-    @patch('broken_link_checker.BrokenLinkChecker')
+    @patch('sys.argv', ['broken_links_finder.py', 'https://example.com', '2', 'false'])
+    @patch('broken_links_finder.BrokenLinkChecker')
     def test_main_valid_arguments(self, mock_checker_class, capsys):
         """Test main function with valid arguments"""
         mock_checker = Mock()
@@ -528,8 +528,8 @@ class TestMainFunction:
         assert "Max depth: 2" in captured.out
         assert "Same domain only: False" in captured.out
     
-    @patch('sys.argv', ['broken_link_checker.py', 'https://example.com'])
-    @patch('broken_link_checker.BrokenLinkChecker')
+    @patch('sys.argv', ['broken_links_finder.py', 'https://example.com'])
+    @patch('broken_links_finder.BrokenLinkChecker')
     def test_main_default_arguments(self, mock_checker_class):
         """Test main function with default arguments"""
         mock_checker = Mock()

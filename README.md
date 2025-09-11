@@ -32,12 +32,12 @@ Broken Links Finder is a robust web crawler designed to help website owners and 
 
 ### Basic Usage
 ```bash
-python broken_link_checker.py <start_url>
+python broken_links_finder.py <start_url>
 ```
 
 ### Advanced Usage
 ```bash
-python broken_link_checker.py <start_url> [max_depth] [same_domain_only]
+python broken_links_finder.py <start_url> [max_depth] [same_domain_only]
 ```
 
 ### Parameters
@@ -61,22 +61,22 @@ python broken_link_checker.py <start_url> [max_depth] [same_domain_only]
 
 ```bash
 # Get detailed help
-python broken_link_checker.py --help
+python broken_links_finder.py --help
 
 # Basic crawl of a website (depth 3, same domain only)
-python broken_link_checker.py https://example.com
+python broken_links_finder.py https://example.com
 
 # Shallow crawl with depth 1
-python broken_link_checker.py https://example.com 1
+python broken_links_finder.py https://example.com 1
 
 # Deep crawl with depth 5, same domain only
-python broken_link_checker.py https://example.com 5 true
+python broken_links_finder.py https://example.com 5 true
 
 # Crawl with external domains allowed
-python broken_link_checker.py https://example.com 2 false
+python broken_links_finder.py https://example.com 2 false
 
 # Quick check of just the homepage
-python broken_link_checker.py https://example.com 0
+python broken_links_finder.py https://example.com 0
 ```
 
 ### Help and Validation
@@ -85,14 +85,14 @@ The script includes comprehensive argument validation and help:
 
 ```bash
 # Show detailed help
-python broken_link_checker.py --help
-python broken_link_checker.py -h
+python broken_links_finder.py --help
+python broken_links_finder.py -h
 
 # Error handling for invalid arguments
-python broken_link_checker.py                    # Missing URL
-python broken_link_checker.py invalid-url        # Invalid URL format
-python broken_link_checker.py https://example.com abc  # Invalid depth
-python broken_link_checker.py https://example.com 2 maybe  # Invalid boolean
+python broken_links_finder.py                    # Missing URL
+python broken_links_finder.py invalid-url        # Invalid URL format
+python broken_links_finder.py https://example.com abc  # Invalid depth
+python broken_links_finder.py https://example.com 2 maybe  # Invalid boolean
 ```
 
 ## Resume Functionality
@@ -211,7 +211,7 @@ python run_tests.py
 pytest
 
 # Run tests with coverage
-pytest --cov=broken_link_checker
+pytest --cov=broken_links_finder
 ```
 
 ## 🤝 Contributing
@@ -255,7 +255,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 3. **Run your first scan:**
    ```bash
-   python broken_link_checker.py https://example.com
+   python broken_links_finder.py https://example.com
    ```
 
 4. **Check the results:**
