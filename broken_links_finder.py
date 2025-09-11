@@ -51,6 +51,10 @@ class BrokenLinksFinder:
         self.last_activity = time.time()
         self.watchdog_timeout = 300  # 5 minutes timeout
 
+        # Periodic state saving timer
+        self.save_timer = None
+        self.save_interval = 600  # 10 minutes in seconds
+
         # Get domain from start URL
         self.base_domain = urlparse(start_url).netloc
 
@@ -104,6 +108,7 @@ class BrokenLinksFinder:
         """Handle interruption signals gracefully"""
         self.logger.info(f"Received signal {signum}. Saving state and exiting...")
         self.interrupted = True
+        self.stop_periodic_save()
         self.save_state()
         sys.exit(0)
 
@@ -120,6 +125,35 @@ class BrokenLinksFinder:
     def update_activity(self):
         """Update the last activity timestamp"""
         self.last_activity = time.time()
+
+    def start_periodic_save(self):
+        """Start the periodic state saving timer"""
+        if self.save_timer is not None:
+            self.save_timer.cancel()
+
+        self.save_timer = threading.Timer(self.save_interval, self._periodic_save_callback)
+        self.save_timer.daemon = True
+        self.save_timer.start()
+        self.logger.info(f"Periodic state saving started (every {self.save_interval // 60} minutes)")
+
+    def stop_periodic_save(self):
+        """Stop the periodic state saving timer"""
+        if self.save_timer is not None:
+            self.save_timer.cancel()
+            self.save_timer = None
+            self.logger.info("Periodic state saving stopped")
+
+    def _periodic_save_callback(self):
+        """Callback function for periodic state saving"""
+        try:
+            self.logger.info("Periodic state save triggered")
+            self.save_state()
+            # Restart the timer for the next interval
+            self.start_periodic_save()
+        except Exception as e:
+            self.logger.error(f"Error during periodic state save: {e}")
+            # Still try to restart the timer even if save failed
+            self.start_periodic_save()
     
     def save_state(self):
         """Save current crawling state to file"""
@@ -318,6 +352,9 @@ class BrokenLinksFinder:
         self.logger.info(f"Max depth: {self.max_depth}, Same domain only: {self.same_domain_only}")
         self.logger.info(f"State file: {self.state_file}")
 
+        # Start periodic state saving
+        self.start_periodic_save()
+
         try:
             while self.urls_to_visit and not self.interrupted:
                 # Check watchdog timer
@@ -348,6 +385,7 @@ class BrokenLinksFinder:
             self.save_state()
             raise
         finally:
+            self.stop_periodic_save()
             self.session.close()
     
     def generate_report(self):
