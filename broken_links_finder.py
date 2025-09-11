@@ -42,6 +42,7 @@ class StateSerializer(serpy.Serializer):
     urls_to_visit = serpy.Field()
     current_depth = serpy.IntField()
     base_domain = serpy.StrField()
+    broken_links = serpy.Field()
     timestamp = serpy.StrField()
 
 class BrokenLinksSerializer(serpy.Serializer):
@@ -254,7 +255,7 @@ class BrokenLinksFinder:
                     for link in self.broken_links:
                         f.write(f"Broken Link: {link['url']}\n")
                         f.write(f"Status: {link['status']}\n")
-                        f.write(f"Found On: {link['found_on']}\n")
+                        f.write(f"Found On: {link.get('found_on', 'unknown')}\n")
                         f.write(f"Depth: {link['depth']}\n")
                         f.write(f"Timestamp: {link['timestamp']}\n")
                         f.write("-" * 30 + "\n")
@@ -273,6 +274,7 @@ class BrokenLinksFinder:
             'urls_to_visit': list(self.urls_to_visit),
             'current_depth': self.current_depth,
             'base_domain': self.base_domain,
+            'broken_links': self.broken_links,
             'timestamp': datetime.now().isoformat()
         }
 
@@ -306,18 +308,12 @@ class BrokenLinksFinder:
             self.current_depth = state['current_depth']
             self.base_domain = state['base_domain']
 
-            # Load broken links from separate file if it exists
-            if os.path.exists(self.broken_links_file):
-                try:
-                    self.broken_links = self._parse_broken_links_file(self.broken_links_file)
-                    self.logger.info(f"Loaded {len(self.broken_links)} broken links from {self.broken_links_file}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to load broken links file: {e}. Starting with empty list.")
-                    self.broken_links = []
-            else:
-                # For backward compatibility, try to get broken_links from state file
-                self.broken_links = state.get('broken_links', [])
-                self.logger.info("No separate broken links file found, using data from state file")
+            # Load broken links from state file
+            self.broken_links = []
+            for link in state.get('broken_links', []):
+                if 'found_on' not in link:
+                    link['found_on'] = 'unknown'
+                self.broken_links.append(link)
 
             self.logger.info(f"Resumed from state file. Visited: {len(self.visited_urls)}, "
                            f"Checked: {len(self.checked_urls)}, "
@@ -456,10 +452,10 @@ class BrokenLinksFinder:
             if link not in self.visited_urls and depth < self.max_depth and self.is_valid_url(link):
                 self.urls_to_visit.append((link, depth + 1))
 
-        self.logger.info(f"Completed page {url} - Found {len([l for l in self.broken_links if l['found_on'] == url])} broken links")
+        self.logger.info(f"Completed page {url} - Found {len([l for l in self.broken_links if l.get('found_on') == url])} broken links")
 
         # Save broken links periodically if we found new ones
-        page_broken_count = len([l for l in self.broken_links if l['found_on'] == url])
+        page_broken_count = len([l for l in self.broken_links if l.get('found_on') == url])
         if page_broken_count > 0:
             self.save_broken_links()
     
@@ -541,7 +537,7 @@ class BrokenLinksFinder:
             if self.broken_links:
                 self.logger.info("Broken links found:")
                 for link in self.broken_links:
-                    self.logger.info(f"  - {link['url']} ({link['status']}) found on {link['found_on']}")
+                    self.logger.info(f"  - {link['url']} ({link['status']}) found on {link.get('found_on', 'unknown')}")
             else:
                 self.logger.info("No broken links found!")
                 
