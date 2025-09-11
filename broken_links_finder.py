@@ -26,7 +26,7 @@ from collections import deque
 import logging
 from datetime import datetime
 
-class BrokenLinkChecker:
+class BrokenLinksFinder:
     def __init__(self, start_url, max_depth=3, same_domain_only=True, state_file=None):
         self.start_url = start_url
         self.max_depth = max_depth
@@ -59,7 +59,7 @@ class BrokenLinkChecker:
         # Session for connection pooling
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (compatible; BrokenLinkChecker/1.0)'
+            'User-Agent': 'Mozilla/5.0 (compatible; BrokenLinksFinder/1.0)'
         })
     
     def _generate_state_filename(self):
@@ -475,7 +475,7 @@ def main():
     print(f"  Press Ctrl+C to stop and save progress")
     print("-" * 50)
     
-    checker = BrokenLinkChecker(start_url, max_depth, same_domain_only)
+    checker = BrokenLinksFinder(start_url, max_depth, same_domain_only)
     checker.run()
 
 

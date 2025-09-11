@@ -108,7 +108,7 @@ pytest
 pytest --cov=broken_links_finder
 
 # Run specific test
-pytest test_broken_links_finder.py::TestBrokenLinkChecker::test_specific_function
+pytest test_broken_links_finder.py::TestBrokenLinksFinder::test_specific_function
 ```
 
 ### Writing Tests

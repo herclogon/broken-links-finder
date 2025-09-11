@@ -47,7 +47,7 @@ def run_unit_tests():
     """Run unit tests only"""
     return run_command([
         sys.executable, "-m", "pytest", 
-        "test_broken_links_finder.py::TestBrokenLinkChecker",
+        "test_broken_links_finder.py::TestBrokenLinksFinder",
         "-v"
     ], "Unit tests")
 
@@ -137,7 +137,7 @@ def main():
     parser.add_argument("--lint", action="store_true", 
                        help="Run code linting")
     parser.add_argument("--test", type=str, 
-                       help="Run specific test (e.g., TestBrokenLinkChecker::test_init)")
+                       help="Run specific test (e.g., TestBrokenLinksFinder::test_init)")
     parser.add_argument("--all", action="store_true", 
                        help="Run all tests with coverage (default)")
     

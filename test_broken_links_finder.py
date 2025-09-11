@@ -22,11 +22,11 @@ import requests
 from datetime import datetime
 
 # Import the module under test
-from broken_links_finder import BrokenLinkChecker, main, print_help
+from broken_links_finder import BrokenLinksFinder, main, print_help
 
 
-class TestBrokenLinkChecker:
-    """Test class for BrokenLinkChecker functionality"""
+class TestBrokenLinksFinder:
+    """Test class for BrokenLinksFinder functionality"""
     
     def setup_method(self):
         """Set up test fixtures before each test method"""
@@ -41,7 +41,7 @@ class TestBrokenLinkChecker:
     
     def test_init_default_parameters(self):
         """Test initialization with default parameters"""
-        checker = BrokenLinkChecker(self.test_url)
+        checker = BrokenLinksFinder(self.test_url)
         
         assert checker.start_url == self.test_url
         assert checker.max_depth == 3
@@ -55,7 +55,7 @@ class TestBrokenLinkChecker:
     
     def test_init_custom_parameters(self):
         """Test initialization with custom parameters"""
-        checker = BrokenLinkChecker(
+        checker = BrokenLinksFinder(
             self.test_url, 
             max_depth=5, 
             same_domain_only=False,
@@ -68,7 +68,7 @@ class TestBrokenLinkChecker:
     
     def test_generate_state_filename(self):
         """Test state filename generation"""
-        checker = BrokenLinkChecker(self.test_url, max_depth=2, same_domain_only=False)
+        checker = BrokenLinksFinder(self.test_url, max_depth=2, same_domain_only=False)
         filename = checker._generate_state_filename()
         
         assert "example.com" in filename
@@ -79,7 +79,7 @@ class TestBrokenLinkChecker:
     
     def test_normalize_url(self):
         """Test URL normalization"""
-        checker = BrokenLinkChecker(self.test_url)
+        checker = BrokenLinksFinder(self.test_url)
         
         # Test fragment removal
         assert checker.normalize_url("https://example.com/page#section") == "https://example.com/page"
@@ -92,7 +92,7 @@ class TestBrokenLinkChecker:
     
     def test_is_valid_url(self):
         """Test URL validation"""
-        checker = BrokenLinkChecker(self.test_url, same_domain_only=True)
+        checker = BrokenLinksFinder(self.test_url, same_domain_only=True)
         
         # Valid URLs
         assert checker.is_valid_url("https://example.com/page") == True
@@ -108,13 +108,13 @@ class TestBrokenLinkChecker:
         assert checker.is_valid_url("https://other.com/page") == False
         
         # Test with same_domain_only=False
-        checker_all_domains = BrokenLinkChecker(self.test_url, same_domain_only=False)
+        checker_all_domains = BrokenLinksFinder(self.test_url, same_domain_only=False)
         assert checker_all_domains.is_valid_url("https://other.com/page") == True
     
     @responses.activate
     def test_check_link_status_success(self):
         """Test successful link status checking"""
-        checker = BrokenLinkChecker(self.test_url)
+        checker = BrokenLinksFinder(self.test_url)
         test_link = "https://example.com/test"
         
         responses.add(responses.HEAD, test_link, status=200)
@@ -126,7 +126,7 @@ class TestBrokenLinkChecker:
     @responses.activate
     def test_check_link_status_not_found(self):
         """Test link status checking for 404 error"""
-        checker = BrokenLinkChecker(self.test_url)
+        checker = BrokenLinksFinder(self.test_url)
         test_link = "https://example.com/notfound"
         
         responses.add(responses.HEAD, test_link, status=404)
@@ -138,7 +138,7 @@ class TestBrokenLinkChecker:
     @responses.activate
     def test_check_link_status_head_fails_get_succeeds(self):
         """Test fallback to GET when HEAD fails"""
-        checker = BrokenLinkChecker(self.test_url)
+        checker = BrokenLinksFinder(self.test_url)
         test_link = "https://example.com/test"
         
         # HEAD request fails
@@ -152,7 +152,7 @@ class TestBrokenLinkChecker:
     
     def test_check_link_status_connection_error(self):
         """Test link status checking with connection error"""
-        checker = BrokenLinkChecker(self.test_url)
+        checker = BrokenLinksFinder(self.test_url)
         test_link = "https://nonexistent.invalid"
         
         status, reason = checker.check_link_status(test_link)
@@ -162,7 +162,7 @@ class TestBrokenLinkChecker:
     @responses.activate
     def test_extract_links_from_page(self):
         """Test link extraction from HTML page"""
-        checker = BrokenLinkChecker(self.test_url)
+        checker = BrokenLinksFinder(self.test_url)
         test_url = "https://example.com/page"
         
         html_content = """
@@ -194,7 +194,7 @@ class TestBrokenLinkChecker:
     @responses.activate
     def test_extract_links_from_page_with_external_domains(self):
         """Test link extraction with external domains allowed"""
-        checker = BrokenLinkChecker(self.test_url, same_domain_only=False)
+        checker = BrokenLinksFinder(self.test_url, same_domain_only=False)
         test_url = "https://example.com/page"
         
         html_content = """
@@ -215,7 +215,7 @@ class TestBrokenLinkChecker:
     
     def test_extract_links_from_page_request_error(self):
         """Test link extraction when page request fails"""
-        checker = BrokenLinkChecker(self.test_url)
+        checker = BrokenLinksFinder(self.test_url)
         test_url = "https://nonexistent.invalid"
         
         links, status_code = checker.extract_links_from_page(test_url)
@@ -225,7 +225,7 @@ class TestBrokenLinkChecker:
     
     def test_save_and_load_state(self):
         """Test state saving and loading"""
-        checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
+        checker = BrokenLinksFinder(self.test_url, state_file=self.state_file)
         
         # Set up some state
         checker.visited_urls.add("https://example.com/page1")
@@ -245,7 +245,7 @@ class TestBrokenLinkChecker:
         assert os.path.exists(self.state_file)
         
         # Create new checker and load state
-        new_checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
+        new_checker = BrokenLinksFinder(self.test_url, state_file=self.state_file)
         loaded = new_checker.load_state()
         
         assert loaded == True
@@ -264,7 +264,7 @@ class TestBrokenLinkChecker:
     
     def test_load_state_no_file(self):
         """Test loading state when no file exists"""
-        checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
+        checker = BrokenLinksFinder(self.test_url, state_file=self.state_file)
         loaded = checker.load_state()
         assert loaded == False
     
@@ -274,15 +274,15 @@ class TestBrokenLinkChecker:
         with open(self.state_file, 'w') as f:
             f.write("invalid json content")
         
-        checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
+        checker = BrokenLinksFinder(self.test_url, state_file=self.state_file)
         loaded = checker.load_state()
         assert loaded == False
     
-    @patch('broken_links_finder.BrokenLinkChecker.extract_links_from_page')
-    @patch('broken_links_finder.BrokenLinkChecker.check_link_status')
+    @patch('broken_links_finder.BrokenLinksFinder.extract_links_from_page')
+    @patch('broken_links_finder.BrokenLinksFinder.check_link_status')
     def test_crawl_page(self, mock_check_status, mock_extract_links):
         """Test crawling a single page"""
-        checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
+        checker = BrokenLinksFinder(self.test_url, state_file=self.state_file)
         
         # Mock the methods
         mock_extract_links.return_value = (
@@ -301,10 +301,10 @@ class TestBrokenLinkChecker:
         assert checker.broken_links[0]['status'] == "404 Not Found"
         assert len(checker.urls_to_visit) == 2  # Both links added for further crawling
     
-    @patch('broken_links_finder.BrokenLinkChecker.extract_links_from_page')
+    @patch('broken_links_finder.BrokenLinksFinder.extract_links_from_page')
     def test_crawl_page_max_depth_exceeded(self, mock_extract_links):
         """Test that crawling stops at max depth"""
-        checker = BrokenLinkChecker(self.test_url, max_depth=1, state_file=self.state_file)
+        checker = BrokenLinksFinder(self.test_url, max_depth=1, state_file=self.state_file)
         
         # Try to crawl at depth 2 (exceeds max_depth of 1)
         checker.crawl_page("https://example.com/test", 2)
@@ -313,10 +313,10 @@ class TestBrokenLinkChecker:
         assert "https://example.com/test" not in checker.visited_urls
         mock_extract_links.assert_not_called()
     
-    @patch('broken_links_finder.BrokenLinkChecker.extract_links_from_page')
+    @patch('broken_links_finder.BrokenLinksFinder.extract_links_from_page')
     def test_crawl_page_already_visited(self, mock_extract_links):
         """Test that already visited pages are skipped"""
-        checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
+        checker = BrokenLinksFinder(self.test_url, state_file=self.state_file)
         
         # Mark URL as already visited
         checker.visited_urls.add("https://example.com/test")
@@ -327,10 +327,10 @@ class TestBrokenLinkChecker:
         # Should not have been processed again
         mock_extract_links.assert_not_called()
     
-    @patch('broken_links_finder.BrokenLinkChecker.extract_links_from_page')
+    @patch('broken_links_finder.BrokenLinksFinder.extract_links_from_page')
     def test_crawl_page_failed_to_fetch(self, mock_extract_links):
         """Test handling of pages that fail to fetch"""
-        checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
+        checker = BrokenLinksFinder(self.test_url, state_file=self.state_file)
         
         # Mock failed page fetch
         mock_extract_links.return_value = ([], None)
@@ -344,13 +344,13 @@ class TestBrokenLinkChecker:
         assert checker.broken_links[0]['url'] == "https://example.com/test"
         assert checker.broken_links[0]['status'] == "Failed to fetch"
     
-    @patch('broken_links_finder.BrokenLinkChecker.crawl_page')
-    @patch('broken_links_finder.BrokenLinkChecker.load_state')
-    @patch('broken_links_finder.BrokenLinkChecker.save_state')
-    @patch('broken_links_finder.BrokenLinkChecker.generate_report')
+    @patch('broken_links_finder.BrokenLinksFinder.crawl_page')
+    @patch('broken_links_finder.BrokenLinksFinder.load_state')
+    @patch('broken_links_finder.BrokenLinksFinder.save_state')
+    @patch('broken_links_finder.BrokenLinksFinder.generate_report')
     def test_run_fresh_start(self, mock_report, mock_save, mock_load, mock_crawl):
         """Test running with fresh start (no previous state)"""
-        checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
+        checker = BrokenLinksFinder(self.test_url, state_file=self.state_file)
         
         # Mock no previous state
         mock_load.return_value = False
@@ -370,13 +370,13 @@ class TestBrokenLinkChecker:
         mock_save.assert_called()
         mock_report.assert_called_once()
     
-    @patch('broken_links_finder.BrokenLinkChecker.crawl_page')
-    @patch('broken_links_finder.BrokenLinkChecker.load_state')
-    @patch('broken_links_finder.BrokenLinkChecker.save_state')
-    @patch('broken_links_finder.BrokenLinkChecker.generate_report')
+    @patch('broken_links_finder.BrokenLinksFinder.crawl_page')
+    @patch('broken_links_finder.BrokenLinksFinder.load_state')
+    @patch('broken_links_finder.BrokenLinksFinder.save_state')
+    @patch('broken_links_finder.BrokenLinksFinder.generate_report')
     def test_run_resume_from_state(self, mock_report, mock_save, mock_load, mock_crawl):
         """Test running with resumed state"""
-        checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
+        checker = BrokenLinksFinder(self.test_url, state_file=self.state_file)
         
         # Mock previous state exists
         mock_load.return_value = True
@@ -399,7 +399,7 @@ class TestBrokenLinkChecker:
     
     def test_generate_report(self):
         """Test report generation"""
-        checker = BrokenLinkChecker(self.test_url, state_file=self.state_file)
+        checker = BrokenLinksFinder(self.test_url, state_file=self.state_file)
         
         # Set up some data
         checker.visited_urls.add("https://example.com/page1")
@@ -510,7 +510,7 @@ class TestMainFunction:
         assert "ERROR: same_domain_only must be 'true' or 'false'" in captured.out
     
     @patch('sys.argv', ['broken_links_finder.py', 'https://example.com', '2', 'false'])
-    @patch('broken_links_finder.BrokenLinkChecker')
+    @patch('broken_links_finder.BrokenLinksFinder')
     def test_main_valid_arguments(self, mock_checker_class, capsys):
         """Test main function with valid arguments"""
         mock_checker = Mock()
@@ -529,7 +529,7 @@ class TestMainFunction:
         assert "Same domain only: False" in captured.out
     
     @patch('sys.argv', ['broken_links_finder.py', 'https://example.com'])
-    @patch('broken_links_finder.BrokenLinkChecker')
+    @patch('broken_links_finder.BrokenLinksFinder')
     def test_main_default_arguments(self, mock_checker_class):
         """Test main function with default arguments"""
         mock_checker = Mock()
@@ -596,7 +596,7 @@ class TestIntegration:
         responses.add(responses.GET, "https://example.com/subpage", body="<html></html>", status=200)
         
         # Create checker and run
-        checker = BrokenLinkChecker(
+        checker = BrokenLinksFinder(
             "https://example.com", 
             max_depth=2, 
             state_file=self.state_file
@@ -665,7 +665,7 @@ class TestIntegration:
         responses.add(responses.GET, "https://example.com/page2", body="<html></html>", status=200)
         
         # Create checker and run (should resume from state)
-        checker = BrokenLinkChecker(
+        checker = BrokenLinksFinder(
             "https://example.com", 
             max_depth=2, 
             state_file=self.state_file

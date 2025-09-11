@@ -163,7 +163,7 @@ The JSON report contains:
 
 ## Configuration
 
-The script uses sensible defaults but can be customized by modifying the `BrokenLinkChecker` class:
+The script uses sensible defaults but can be customized by modifying the `BrokenLinksFinder` class:
 
 - **Timeout**: HTTP request timeout (default: 10-15 seconds)
 - **Delay**: Delay between requests (default: 0.5 seconds)
@@ -297,7 +297,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ### Custom User Agent
 ```python
-checker = BrokenLinkChecker(start_url)
+checker = BrokenLinksFinder(start_url)
 checker.session.headers.update({'User-Agent': 'Your Custom User Agent'})
 ```
 
@@ -309,7 +309,7 @@ response = self.session.head(url, timeout=30, allow_redirects=True)
 
 ### Custom State File Location
 ```python
-checker = BrokenLinkChecker(start_url, state_file='custom_state.json')
+checker = BrokenLinksFinder(start_url, state_file='custom_state.json')
 ```
 
 ## 📈 Performance Tips
