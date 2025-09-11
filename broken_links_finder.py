@@ -608,7 +608,7 @@ INTERRUPTION:
     The script will save current state and can be resumed later
 
 REQUIREMENTS:
-    Install dependencies: pip install -r requirements.txt
+    Install dependencies: uv sync
     """
     print(help_text)
 

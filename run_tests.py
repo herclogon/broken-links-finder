@@ -31,7 +31,7 @@ def run_command(cmd, description):
         return False
     except FileNotFoundError:
         print(f"❌ Command not found: {cmd[0]}")
-        print("Make sure pytest is installed: pip install -r test_requirements.txt")
+        print("Make sure pytest is installed: uv sync")
         return False
 
 
@@ -39,7 +39,7 @@ def install_dependencies():
     """Install test dependencies"""
     print("Installing test dependencies...")
     return run_command([
-        sys.executable, "-m", "pip", "install", "-r", "test_requirements.txt"
+        "uv", "sync"
     ], "Installing test dependencies")
 
 

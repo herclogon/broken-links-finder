@@ -51,8 +51,8 @@ We welcome several types of contributions:
 
 ### Prerequisites
 
-- Python 3.6 or higher
-- pip (Python package installer)
+- Python 3.7 or higher
+- uv (for dependency management)
 
 ### Installation
 
@@ -62,16 +62,9 @@ We welcome several types of contributions:
    cd broken-links-finder
    ```
 
-2. Create a virtual environment:
+2. Install dependencies:
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   pip install -r test_requirements.txt
+   uv sync
    ```
 
 ### Project Structure
@@ -79,8 +72,8 @@ We welcome several types of contributions:
 ```
 broken-links-finder/
 ├── broken_links_finder.py    # Main script
-├── requirements.txt          # Production dependencies
-├── test_requirements.txt     # Test dependencies
+├── uv.lock                  # Dependency lock file
+├── pyproject.toml           # Project configuration
 ├── test_broken_links_finder.py  # Test suite
 ├── run_tests.py             # Test runner
 ├── pytest.ini              # Pytest configuration

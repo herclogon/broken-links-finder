@@ -31,14 +31,6 @@ Broken Links Finder is a robust web crawler designed to help website owners and 
    uv sync
    ```
 
-### Using pip (Alternative)
-
-1. Install Python 3.7 or higher
-2. Install required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
 ## Usage
 
 ### Basic Usage
@@ -247,9 +239,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ## 📋 Requirements
 
 - Python 3.7 or higher
-- requests >= 2.25.1
-- beautifulsoup4 >= 4.9.3
-- lxml >= 4.6.3
+- uv (for dependency management)
 
 ## 🚀 Quick Start
 
@@ -260,15 +250,8 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
    ```
 
 2. **Install dependencies:**
-   
-   Using uv (recommended):
    ```bash
    uv sync
-   ```
-   
-   Or using pip:
-   ```bash
-   pip install -r requirements.txt
    ```
 
 3. **Run your first scan:**
