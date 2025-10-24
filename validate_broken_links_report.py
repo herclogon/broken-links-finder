@@ -10,12 +10,15 @@ an updated validation report with the refreshed status of each link.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
 from http import HTTPStatus
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import requests
 
@@ -23,6 +26,106 @@ import requests
 DEFAULT_USER_AGENT = "Mozilla/5.0 (compatible; BrokenLinksValidator/1.0)"
 
 
+class PageSourceCollector:
+    """Fetch and persist source pages where broken links were detected."""
+
+    def __init__(
+        self,
+        session: requests.Session,
+        output_dir: str,
+        timeout: float,
+        verbose: bool = False,
+    ) -> None:
+        self.session = session
+        self.output_dir = output_dir
+        self.timeout = timeout
+        self.verbose = verbose
+        self._cache: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
+
+    @staticmethod
+    def _sanitize_component(component: str) -> str:
+        """Convert arbitrary text into a filesystem-safe component."""
+        sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", component).strip("_")
+        return sanitized or "page"
+
+    def _build_filename(self, url: str) -> str:
+        """Create a unique filename for a captured source page."""
+        parsed = urlparse(url)
+        base = f"{parsed.netloc}{parsed.path}"
+        hashed = hashlib.md5(url.encode("utf-8")).hexdigest()[:8]
+        sanitized = self._sanitize_component(base)
+        if len(sanitized) > 80:
+            sanitized = sanitized[:80].rstrip("_")
+        return f"{sanitized}_{hashed}.html"
+
+    def __call__(
+        self,
+        url: str,
+        content: Optional[str] = None,
+        encoding: Optional[str] = None,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Retrieve and store the HTML content for the provided URL.
+
+        Returns a tuple of (path, error). When the capture succeeds, path is the
+        absolute file path and error is None. When it fails, path is None and
+        error contains a human-readable description.
+        """
+        if not url:
+            return None, "Missing source URL."
+
+        url = url.strip()
+        if not url:
+            return None, "Missing source URL."
+
+        if url in self._cache:
+            return self._cache[url]
+
+        response_text: Optional[str] = content
+        response_encoding: Optional[str] = encoding
+
+        if response_text is None:
+            if self.verbose:
+                print(f"Fetching source page: {url}", flush=True)
+
+            try:
+                response = self.session.get(url, allow_redirects=True, timeout=self.timeout)
+                response_text = response.text
+                response_encoding = response.encoding
+            except requests.RequestException as exc:
+                result = (None, f"Failed to fetch source page: {exc}")
+                self._cache[url] = result
+                return result
+        else:
+            response_encoding = response_encoding or "utf-8"
+            if self.verbose:
+                print(f"Saving provided content for: {url}", flush=True)
+
+        try:
+            os.makedirs(self.output_dir, exist_ok=True)
+        except OSError as exc:
+            result = (None, f"Unable to create source directory '{self.output_dir}': {exc}")
+            self._cache[url] = result
+            return result
+
+        filename = self._build_filename(url)
+        path = os.path.join(self.output_dir, filename)
+
+        encoding_to_use = response_encoding or "utf-8"
+        text_to_write = response_text or ""
+
+        try:
+            with open(path, "w", encoding=encoding_to_use) as handle:
+                handle.write(text_to_write)
+        except OSError as exc:
+            result = (None, f"Failed to write source file '{path}': {exc}")
+            self._cache[url] = result
+            return result
+
+        absolute_path = os.path.abspath(path)
+        result = (absolute_path, None)
+        self._cache[url] = result
+        return result
 def parse_report(file_path: str) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Parse a plain-text broken links report into header lines and entry metadata.
@@ -150,12 +253,118 @@ def determine_outcome(status_code: Optional[int]) -> str:
     return "other_error"
 
 
+def _build_link_candidates(url: str) -> List[str]:
+    """Create possible substrings that may appear in HTML for the given link."""
+    candidates: List[str] = []
+    if not url:
+        return candidates
+
+    parsed = urlparse(url)
+    path = parsed.path or ""
+    if parsed.params:
+        path = f"{path};{parsed.params}"
+
+    full_url = url
+    if full_url:
+        candidates.append(full_url)
+
+    if parsed.scheme and parsed.netloc:
+        candidates.append(f"//{parsed.netloc}{path}")
+
+    if path:
+        candidates.append(path)
+
+    if parsed.query:
+        path_with_query = f"{path}?{parsed.query}"
+        candidates.append(path_with_query)
+        query_html = parsed.query.replace("&", "&amp;")
+        candidates.append(f"{path}?{query_html}")
+        if parsed.scheme and parsed.netloc:
+            candidates.append(f"{parsed.scheme}://{parsed.netloc}{path}?{query_html}")
+            candidates.append(f"//{parsed.netloc}{path}?{query_html}")
+
+    return [candidate for candidate in dict.fromkeys(candidates) if candidate]
+
+
+def _link_present_in_html(html: str, broken_link: str) -> Optional[bool]:
+    """Determine whether the broken link (or its variants) is still referenced."""
+    if not html:
+        return None
+
+    candidates = _build_link_candidates(broken_link)
+    for candidate in candidates:
+        if candidate and candidate in html:
+            return True
+    return False if candidates else None
+
+
+def inspect_found_on_page(
+    session: requests.Session,
+    found_on_url: Optional[str],
+    broken_link: str,
+    timeout: float,
+    collector: Optional[PageSourceCollector],
+    cache: Dict[str, Dict[str, Any]],
+    verbose: bool = False,
+) -> Dict[str, Any]:
+    """Fetch (or reuse) the page the link was found on and check if it still references the link."""
+    result: Dict[str, Any] = {
+        "source_path": None,
+        "source_error": None,
+        "reference_found": None,
+        "fetch_error": None,
+        "fetched_at": None,
+    }
+
+    if not found_on_url:
+        return result
+
+    found_on_url = found_on_url.strip()
+    if not found_on_url:
+        return result
+
+    if found_on_url in cache:
+        return cache[found_on_url]
+
+    html_text = ""
+    encoding = "utf-8"
+    fetched_at = datetime.now(timezone.utc).isoformat()
+
+    try:
+        response = session.get(found_on_url, allow_redirects=True, timeout=timeout)
+        html_text = response.text or ""
+        encoding = response.encoding or encoding
+        result["status_code"] = response.status_code
+        if verbose:
+            print(f"Scanning source page: {found_on_url} ({response.status_code})", flush=True)
+    except requests.RequestException as exc:
+        result["fetch_error"] = f"Failed to fetch source page: {exc}"
+        if verbose:
+            print(f"Failed to fetch source page {found_on_url}: {exc}", flush=True)
+
+    if collector is not None:
+        path, write_error = collector(found_on_url, html_text, encoding)
+        if path:
+            result["source_path"] = path
+        if write_error:
+            result["source_error"] = write_error
+
+    reference_found = _link_present_in_html(html_text, broken_link)
+
+    result["reference_found"] = reference_found
+    result["fetched_at"] = fetched_at
+
+    cache[found_on_url] = result
+    return result
+
+
 def validate_entries(
     entries: Iterable[Dict[str, Any]],
     session: requests.Session,
     timeout: float,
     delay: float,
     verbose: bool = False,
+    source_collector: Optional[PageSourceCollector] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     Re-check all entries that were previously flagged as 404.
@@ -163,9 +372,27 @@ def validate_entries(
     Returns a tuple of (validated_entries, summary) where:
     - validated_entries mirrors the input entries but contains a new "validation"
       key with detailed results.
-    - summary is a dict with aggregated counts for reporting.
+    - summary is a dict with aggregated counts for reporting (including duplicates
+      skipped and links removed).
+
+    When a source_collector is provided, each entry's "found_on" page is fetched
+    (with caching) to confirm the broken link is still referenced and to capture
+    the HTML source when requested.
     """
     entries_list = list(entries)
+    unique_entries: List[Dict[str, Any]] = []
+    seen_pairs: set[Tuple[Optional[str], Optional[str]]] = set()
+    duplicates_skipped = 0
+
+    for entry in entries_list:
+        key = (entry.get("broken_link"), entry.get("found_on"))
+        if key in seen_pairs:
+            duplicates_skipped += 1
+            continue
+        seen_pairs.add(key)
+        unique_entries.append(entry)
+
+    entries_list = unique_entries
     validated: List[Dict[str, Any]] = []
     summary = {
         "total_entries": 0,
@@ -174,7 +401,10 @@ def validate_entries(
         "resolved": 0,
         "other_error": 0,
         "errors": 0,
+        "duplicates_skipped": duplicates_skipped,
+        "link_removed": 0,
     }
+    found_on_cache: Dict[str, Dict[str, Any]] = {}
 
     status_prefix = "404"
     total_to_recheck = sum(
@@ -218,6 +448,38 @@ def validate_entries(
 
             if status_code is None:
                 validation["error"] = reason
+
+            source_details: Dict[str, Any] = {}
+            if entry.get("found_on"):
+                source_details = inspect_found_on_page(
+                    session,
+                    entry.get("found_on"),
+                    entry["broken_link"],
+                    timeout,
+                    source_collector,
+                    found_on_cache,
+                    verbose=verbose,
+                )
+                if source_details.get("source_path"):
+                    validation["source_path"] = source_details["source_path"]
+                if source_details.get("source_error"):
+                    validation["source_error"] = source_details["source_error"]
+                if source_details.get("fetch_error"):
+                    validation["source_fetch_error"] = source_details["fetch_error"]
+                if source_details.get("reference_found") is not None:
+                    validation["reference_found"] = source_details["reference_found"]
+                if source_details.get("fetched_at"):
+                    validation["reference_checked_at"] = source_details["fetched_at"]
+
+                if source_details.get("reference_found") is False:
+                    outcome = "link_removed"
+
+            validation["outcome"] = outcome
+
+            if outcome == "link_removed":
+                summary["link_removed"] += 1
+                validation.pop("error", None)
+            elif outcome == "error":
                 summary["errors"] += 1
             else:
                 summary[outcome] += 1
@@ -245,8 +507,10 @@ def validate_entries(
             "Validation complete: "
             f"{summary['resolved']} resolved, "
             f"{summary['still_broken']} still broken, "
+            f"{summary['link_removed']} links removed, "
             f"{summary['other_error']} other HTTP errors, "
-            f"{summary['errors']} validation errors.",
+            f"{summary['errors']} validation errors, "
+            f"{summary['duplicates_skipped']} duplicates skipped.",
             flush=True,
         )
 
@@ -261,6 +525,7 @@ def write_validated_report(
 ) -> None:
     """Persist the validation results to a text file."""
     lines: List[str] = []
+    output_dir = os.path.dirname(os.path.abspath(output_path))
 
     if header_lines:
         lines.extend(header_lines)
@@ -275,6 +540,8 @@ def write_validated_report(
             f"Source Report: {summary['source_report']}",
             f"Total Entries: {summary['total_entries']}",
             f"Links Rechecked: {summary['rechecked']}",
+            f"Duplicates Skipped: {summary.get('duplicates_skipped', 0)}",
+            f"Links Removed: {summary.get('link_removed', 0)}",
             f"Still Broken: {summary['still_broken']}",
             f"Resolved: {summary['resolved']}",
             f"Other HTTP Errors: {summary['other_error']}",
@@ -316,6 +583,18 @@ def write_validated_report(
         validation_timestamp = validation.get("timestamp")
         if validation_timestamp:
             lines.append(f"Validation Checked: {validation_timestamp}")
+
+        source_path = validation.get("source_path")
+        if source_path:
+            try:
+                relative_path = os.path.relpath(source_path, output_dir)
+            except ValueError:
+                relative_path = source_path
+            lines.append(f"Source Saved To: {relative_path}")
+        else:
+            source_error = validation.get("source_error")
+            if source_error:
+                lines.append(f"Source Capture Error: {source_error}")
 
         error_text = validation.get("error")
         if error_text:
@@ -365,6 +644,13 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Delay in seconds between validation requests (default: 0).",
     )
     parser.add_argument(
+        "--source-dir",
+        help=(
+            "Directory where HTML snapshots of the pages containing broken links "
+            "will be stored. Only pages for links that remain broken are captured."
+        ),
+    )
+    parser.add_argument(
         "--user-agent",
         default=DEFAULT_USER_AGENT,
         help=f"Custom User-Agent header (default: {DEFAULT_USER_AGENT}).",
@@ -396,12 +682,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     session = requests.Session()
     session.headers.update({"User-Agent": args.user_agent})
 
+    collector: Optional[PageSourceCollector] = None
+    if args.source_dir:
+        collector = PageSourceCollector(
+            session, args.source_dir, timeout=args.timeout, verbose=args.verbose
+        )
+
     validated_entries, summary = validate_entries(
         entries,
         session,
         args.timeout,
         args.delay,
         verbose=args.verbose,
+        source_collector=collector,
     )
 
     summary["validated_at"] = datetime.now(timezone.utc).isoformat()

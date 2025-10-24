@@ -10,20 +10,23 @@ This test suite covers:
 - Error handling tests
 """
 
-import pytest
 import json
 import os
-import tempfile
 import shutil
-from unittest.mock import Mock, patch, MagicMock
+import tempfile
 from collections import deque
-import responses
-import requests
 from datetime import datetime
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+import requests
+import responses
 
 # Import the module under test
 from broken_links_finder import BrokenLinksFinder, main, print_help
 from validate_broken_links_report import (
+    PageSourceCollector,
     parse_report,
     validate_entries,
     write_validated_report,
@@ -820,10 +823,119 @@ class TestReportValidation:
         assert summary["rechecked"] == 1
         assert summary["resolved"] == 1
         assert summary["still_broken"] == 0
+        assert summary["duplicates_skipped"] == 0
         assert validated[0]["validation"]["outcome"] == "resolved"
         assert validated[0]["validation"]["method"] == "GET"
         assert validated[1]["validation"]["outcome"] == "skipped"
         assert validated[1]["validation"]["checked"] is False
+
+    @responses.activate
+    def test_validate_entries_collects_source_snapshot(self, tmp_path):
+        """Capture page source when the broken link remains unresolved."""
+        entries = [
+            {
+                "broken_link": "https://example.com/missing",
+                "status": "404 Not Found",
+                "found_on": "https://example.com/page",
+            }
+        ]
+
+        responses.add(responses.HEAD, "https://example.com/missing", status=404)
+        responses.add(responses.GET, "https://example.com/missing", status=404)
+        responses.add(
+            responses.GET,
+            "https://example.com/page",
+            status=200,
+            body='<html><body><a href="https://example.com/missing">Broken</a></body></html>',
+            content_type="text/html",
+        )
+
+        session = requests.Session()
+        collector = PageSourceCollector(
+            session, str(tmp_path), timeout=5.0, verbose=False
+        )
+
+        validated, summary = validate_entries(
+            entries,
+            session,
+            timeout=5.0,
+            delay=0.0,
+            source_collector=collector,
+        )
+
+        assert summary["still_broken"] == 1
+        assert summary["link_removed"] == 0
+        assert summary["duplicates_skipped"] == 0
+        source_path = validated[0]["validation"].get("source_path")
+        assert source_path is not None
+        saved_file = Path(source_path)
+        assert saved_file.exists()
+        assert "Broken" in saved_file.read_text(encoding="utf-8")
+        assert validated[0]["validation"]["reference_found"] is True
+
+    @responses.activate
+    def test_validate_entries_marks_removed_when_link_missing(self):
+        """Mark links as removed when the source page no longer references them."""
+        entries = [
+            {
+                "broken_link": "https://example.com/missing",
+                "status": "404 Not Found",
+                "found_on": "https://example.com/page",
+            }
+        ]
+
+        responses.add(responses.HEAD, "https://example.com/missing", status=404)
+        responses.add(responses.GET, "https://example.com/missing", status=404)
+        responses.add(
+            responses.GET,
+            "https://example.com/page",
+            status=200,
+            body="<html><body>No link here</body></html>",
+            content_type="text/html",
+        )
+
+        session = requests.Session()
+        validated, summary = validate_entries(entries, session, timeout=5.0, delay=0.0)
+
+        assert summary["link_removed"] == 1
+        assert summary["still_broken"] == 0
+        assert validated[0]["validation"]["outcome"] == "link_removed"
+        assert validated[0]["validation"]["reference_found"] is False
+
+    @responses.activate
+    def test_validate_entries_skips_duplicates_by_found_on(self):
+        """Ensure duplicate entries with the same source page are skipped."""
+        entries = [
+            {
+                "broken_link": "https://example.com/missing",
+                "status": "404 Not Found",
+                "found_on": "https://example.com/page",
+            },
+            {
+                "broken_link": "https://example.com/missing",
+                "status": "404 Not Found",
+                "found_on": "https://example.com/page",
+            },
+        ]
+
+        responses.add(responses.HEAD, "https://example.com/missing", status=404)
+        responses.add(responses.GET, "https://example.com/missing", status=404)
+        responses.add(
+            responses.GET,
+            "https://example.com/page",
+            status=200,
+            body='<html><body><a href="/missing">Broken</a></body></html>',
+            content_type="text/html",
+        )
+
+        session = requests.Session()
+        validated, summary = validate_entries(entries, session, timeout=5.0, delay=0.0)
+
+        assert summary["duplicates_skipped"] == 1
+        assert summary["total_entries"] == 1
+        assert summary["link_removed"] == 0
+        assert len(validated) == 1
+        assert validated[0]["broken_link"] == "https://example.com/missing"
 
     @responses.activate
     def test_validate_entries_verbose_output(self, capsys):
@@ -843,6 +955,7 @@ class TestReportValidation:
     def test_write_validated_report_outputs_summary(self, tmp_path):
         """Check that the writer emits a readable validation summary."""
         header = ["Broken Links Report"]
+        captured_path = tmp_path / "source.html"
         validated_entries = [
             {
                 "broken_link": "https://example.com/missing",
@@ -853,6 +966,7 @@ class TestReportValidation:
                     "status_text": "404 Not Found",
                     "method": "GET",
                     "timestamp": "2024-01-01T00:00:00+00:00",
+                    "source_path": str(captured_path),
                 },
             },
             {
@@ -872,6 +986,8 @@ class TestReportValidation:
             "source_report": "/tmp/report.txt",
             "total_entries": 2,
             "rechecked": 2,
+            "duplicates_skipped": 0,
+            "link_removed": 0,
             "still_broken": 1,
             "resolved": 1,
             "other_error": 0,
@@ -886,6 +1002,9 @@ class TestReportValidation:
         assert "Still Broken: 1" in content
         assert "Broken Link: https://example.com/missing" in content
         assert "Validation Outcome: Still Broken" in content
+        assert "Duplicates Skipped: 0" in content
+        assert "Links Removed: 0" in content
+        assert f"Source Saved To: {captured_path.name}" in content
         assert "https://example.com/fixed" not in content
 
     def test_write_validated_report_no_still_broken(self, tmp_path):
@@ -909,6 +1028,8 @@ class TestReportValidation:
             "source_report": "/tmp/report.txt",
             "total_entries": 1,
             "rechecked": 1,
+            "duplicates_skipped": 0,
+            "link_removed": 0,
             "still_broken": 0,
             "resolved": 1,
             "other_error": 0,
@@ -919,6 +1040,46 @@ class TestReportValidation:
         write_validated_report(str(output_path), header, validated_entries, summary)
         content = output_path.read_text(encoding="utf-8")
         assert "No links remain broken after validation." in content
+        assert "Duplicates Skipped: 0" in content
+        assert "Links Removed: 0" in content
+        assert "https://example.com/fixed" not in content
+
+    def test_write_validated_report_reports_removed_links(self, tmp_path):
+        """Ensure removed links are reflected in the summary but omitted from details."""
+        header = ["Broken Links Report"]
+        validated_entries = [
+            {
+                "broken_link": "https://example.com/removed",
+                "status": "404 Not Found",
+                "validation": {
+                    "checked": True,
+                    "outcome": "link_removed",
+                    "status_text": "404 Not Found",
+                    "method": "GET",
+                    "timestamp": "2024-01-01T00:00:02+00:00",
+                    "reference_found": False,
+                },
+            }
+        ]
+        summary = {
+            "validated_at": "2024-01-01T00:00:02+00:00",
+            "source_report": "/tmp/report.txt",
+            "total_entries": 1,
+            "rechecked": 1,
+            "duplicates_skipped": 0,
+            "link_removed": 1,
+            "still_broken": 0,
+            "resolved": 0,
+            "other_error": 0,
+            "errors": 0,
+        }
+
+        output_path = tmp_path / "validated_removed.txt"
+        write_validated_report(str(output_path), header, validated_entries, summary)
+        content = output_path.read_text(encoding="utf-8")
+        assert "Links Removed: 1" in content
+        assert "No links remain broken after validation." in content
+        assert "https://example.com/removed" not in content
 
 
 if __name__ == "__main__":

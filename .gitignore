@@ -153,3 +153,5 @@ broken_links_report_*.json
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+/.pages
