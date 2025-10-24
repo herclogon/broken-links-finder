@@ -139,7 +139,7 @@ class BrokenLinksFinder:
         depth_str = f"depth{self.max_depth}"
         domain_str = "same-domain" if self.same_domain_only else "all-domains"
 
-        filename = f"broken_links_{clean_domain}_{depth_str}_{domain_str}_{config_hash}.json"
+        filename = f"broken_links_{clean_domain}_{depth_str}_{domain_str}_{config_hash}.txt"
 
         return filename
 
@@ -603,6 +603,7 @@ RESUME FUNCTIONALITY:
 OUTPUT FILES:
     - crawler_state_<domain>_depth<N>_<domain-mode>_<hash>.json: State file for resume functionality
     - broken_links_finder.log: Detailed log file
+    - broken_links_<domain>_depth<N>_<domain-mode>_<hash>.txt: Plain text broken link list (updated incrementally)
     - broken_links_report_YYYYMMDD_HHMMSS.json: Final report
 
 INTERRUPTION:

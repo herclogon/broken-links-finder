@@ -112,6 +112,7 @@ The script generates several output files:
 
 - `crawler_state.json`: State file for resume functionality
 - `broken_links_finder.log`: Detailed log file
+- `broken_links_<domain>_depth<N>_<domain-mode>_<hash>.txt`: Plain text list of broken links
 - `broken_links_report_YYYYMMDD_HHMMSS.json`: Final report with all findings
 
 ## Report Format

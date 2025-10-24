@@ -23,6 +23,11 @@ from datetime import datetime
 
 # Import the module under test
 from broken_links_finder import BrokenLinksFinder, main, print_help
+from validate_broken_links_report import (
+    parse_report,
+    validate_entries,
+    write_validated_report,
+)
 
 
 class TestBrokenLinksFinder:
@@ -76,6 +81,17 @@ class TestBrokenLinksFinder:
         assert "all-domains" in filename
         assert filename.endswith(".json")
         assert filename.startswith("crawler_state_")
+
+    def test_generate_broken_links_filename(self):
+        """Ensure broken links report uses the plain text extension"""
+        checker = BrokenLinksFinder(self.test_url, max_depth=4, same_domain_only=True)
+        filename = checker._generate_broken_links_filename()
+
+        assert "example.com" in filename
+        assert "depth4" in filename
+        assert "same-domain" in filename
+        assert filename.startswith("broken_links_")
+        assert filename.endswith(".txt")
     
     def test_normalize_url(self):
         """Test URL normalization"""
@@ -178,7 +194,13 @@ class TestBrokenLinksFinder:
         </html>
         """
         
-        responses.add(responses.GET, test_url, body=html_content, status=200)
+        responses.add(
+            responses.GET,
+            test_url,
+            body=html_content,
+            status=200,
+            headers={"Content-Type": "text/html"},
+        )
         
         links, status_code = checker.extract_links_from_page(test_url)
         
@@ -206,7 +228,13 @@ class TestBrokenLinksFinder:
         </html>
         """
         
-        responses.add(responses.GET, test_url, body=html_content, status=200)
+        responses.add(
+            responses.GET,
+            test_url,
+            body=html_content,
+            status=200,
+            headers={"Content-Type": "text/html"},
+        )
         
         links, status_code = checker.extract_links_from_page(test_url)
         
@@ -611,7 +639,8 @@ class TestIntegration:
             </body>
             </html>
             """,
-            status=200
+            status=200,
+            headers={"Content-Type": "text/html"},
         )
         
         responses.add(
@@ -624,16 +653,29 @@ class TestIntegration:
             </body>
             </html>
             """,
-            status=200
+            status=200,
+            headers={"Content-Type": "text/html"},
         )
         
-        responses.add(responses.GET, "https://example.com/page2", body="<html></html>", status=200)
+        responses.add(
+            responses.GET,
+            "https://example.com/page2",
+            body="<html></html>",
+            status=200,
+            headers={"Content-Type": "text/html"},
+        )
         responses.add(responses.HEAD, "https://example.com/page1", status=200)
         responses.add(responses.HEAD, "https://example.com/page2", status=200)
         responses.add(responses.HEAD, "https://example.com/broken", status=404)
         responses.add(responses.GET, "https://example.com/broken", status=404)  # Add GET fallback for broken link
         responses.add(responses.HEAD, "https://example.com/subpage", status=200)
-        responses.add(responses.GET, "https://example.com/subpage", body="<html></html>", status=200)
+        responses.add(
+            responses.GET,
+            "https://example.com/subpage",
+            body="<html></html>",
+            status=200,
+            headers={"Content-Type": "text/html"},
+        )
         
         # Create checker and run
         checker = BrokenLinksFinder(
@@ -699,10 +741,17 @@ class TestIntegration:
             </body>
             </html>
             """,
-            status=200
+            status=200,
+            headers={"Content-Type": "text/html"},
         )
         responses.add(responses.HEAD, "https://example.com/page2", status=200)
-        responses.add(responses.GET, "https://example.com/page2", body="<html></html>", status=200)
+        responses.add(
+            responses.GET,
+            "https://example.com/page2",
+            body="<html></html>",
+            status=200,
+            headers={"Content-Type": "text/html"},
+        )
         
         # Create checker and run (should resume from state)
         checker = BrokenLinksFinder(
@@ -718,6 +767,158 @@ class TestIntegration:
         assert "https://example.com" in checker.visited_urls  # From loaded state
         assert "https://example.com/page1" in checker.visited_urls  # Newly crawled
         assert len(checker.visited_urls) >= 2
+
+
+class TestReportValidation:
+    """Tests for the report validation utility."""
+
+    def test_parse_report_extracts_entries(self, tmp_path):
+        """Ensure the validator can parse formatted report files."""
+        report_content = "\n".join(
+            [
+                "Broken Links Report",
+                "Start URL: https://example.com",
+                "--------------------------------------------------",
+                "Broken Link: https://example.com/missing",
+                "Status: 404 Not Found",
+                "Found On: https://example.com",
+                "Depth: 2",
+                "Timestamp: 2024-01-01T00:00:00",
+                "------------------------------",
+                "Broken Link: https://example.com/other",
+                "Status: Failed to fetch",
+                "Found On: https://example.com/page",
+                "",
+            ]
+        )
+
+        report_path = tmp_path / "report.txt"
+        report_path.write_text(report_content, encoding="utf-8")
+
+        header, entries = parse_report(str(report_path))
+
+        assert header[0] == "Broken Links Report"
+        assert len(entries) == 2
+        assert entries[0]["broken_link"] == "https://example.com/missing"
+        assert entries[0]["depth"] == 2
+        assert entries[1]["status"] == "Failed to fetch"
+
+    @responses.activate
+    def test_validate_entries_rechecks_404(self):
+        """Validate that only 404 entries are rechecked and results tallied."""
+        entries = [
+            {"broken_link": "https://example.com/missing", "status": "404 Not Found"},
+            {"broken_link": "https://example.com/skip", "status": "Failed to fetch"},
+        ]
+
+        responses.add(responses.HEAD, "https://example.com/missing", status=404)
+        responses.add(responses.GET, "https://example.com/missing", status=200)
+
+        session = requests.Session()
+        validated, summary = validate_entries(entries, session, timeout=5.0, delay=0.0)
+
+        assert summary["rechecked"] == 1
+        assert summary["resolved"] == 1
+        assert summary["still_broken"] == 0
+        assert validated[0]["validation"]["outcome"] == "resolved"
+        assert validated[0]["validation"]["method"] == "GET"
+        assert validated[1]["validation"]["outcome"] == "skipped"
+        assert validated[1]["validation"]["checked"] is False
+
+    @responses.activate
+    def test_validate_entries_verbose_output(self, capsys):
+        """Ensure verbose flag surfaces progress information."""
+        entries = [{"broken_link": "https://example.com/missing", "status": "404 Not Found"}]
+
+        responses.add(responses.HEAD, "https://example.com/missing", status=404)
+        responses.add(responses.GET, "https://example.com/missing", status=404)
+
+        session = requests.Session()
+        validate_entries(entries, session, timeout=5.0, delay=0.0, verbose=True)
+
+        captured = capsys.readouterr()
+        assert "[1/1] Rechecking https://example.com/missing" in captured.out
+        assert "Validation complete:" in captured.out
+
+    def test_write_validated_report_outputs_summary(self, tmp_path):
+        """Check that the writer emits a readable validation summary."""
+        header = ["Broken Links Report"]
+        validated_entries = [
+            {
+                "broken_link": "https://example.com/missing",
+                "status": "404 Not Found",
+                "validation": {
+                    "checked": True,
+                    "outcome": "still_broken",
+                    "status_text": "404 Not Found",
+                    "method": "GET",
+                    "timestamp": "2024-01-01T00:00:00+00:00",
+                },
+            },
+            {
+                "broken_link": "https://example.com/fixed",
+                "status": "404 Not Found",
+                "validation": {
+                    "checked": True,
+                    "outcome": "resolved",
+                    "status_text": "200 OK",
+                    "method": "GET",
+                    "timestamp": "2024-01-01T00:00:01+00:00",
+                },
+            },
+        ]
+        summary = {
+            "validated_at": "2024-01-01T00:00:00+00:00",
+            "source_report": "/tmp/report.txt",
+            "total_entries": 2,
+            "rechecked": 2,
+            "still_broken": 1,
+            "resolved": 1,
+            "other_error": 0,
+            "errors": 0,
+        }
+
+        output_path = tmp_path / "validated.txt"
+        write_validated_report(str(output_path), header, validated_entries, summary)
+
+        content = output_path.read_text(encoding="utf-8")
+        assert "Validation Summary" in content
+        assert "Still Broken: 1" in content
+        assert "Broken Link: https://example.com/missing" in content
+        assert "Validation Outcome: Still Broken" in content
+        assert "https://example.com/fixed" not in content
+
+    def test_write_validated_report_no_still_broken(self, tmp_path):
+        """When no links remain broken, emit a helpful message."""
+        header = ["Broken Links Report"]
+        validated_entries = [
+            {
+                "broken_link": "https://example.com/fixed",
+                "status": "404 Not Found",
+                "validation": {
+                    "checked": True,
+                    "outcome": "resolved",
+                    "status_text": "200 OK",
+                    "method": "GET",
+                    "timestamp": "2024-01-01T00:00:01+00:00",
+                },
+            }
+        ]
+        summary = {
+            "validated_at": "2024-01-01T00:00:00+00:00",
+            "source_report": "/tmp/report.txt",
+            "total_entries": 1,
+            "rechecked": 1,
+            "still_broken": 0,
+            "resolved": 1,
+            "other_error": 0,
+            "errors": 0,
+        }
+
+        output_path = tmp_path / "validated.txt"
+        write_validated_report(str(output_path), header, validated_entries, summary)
+        content = output_path.read_text(encoding="utf-8")
+        assert "No links remain broken after validation." in content
 
 
 if __name__ == "__main__":
