@@ -16,11 +16,13 @@ import re
 import sys
 import time
 from datetime import datetime, timezone
+from html import unescape
 from http import HTTPStatus
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
+from bs4 import BeautifulSoup
 
 
 DEFAULT_USER_AGENT = "Mozilla/5.0 (compatible; BrokenLinksValidator/1.0)"
@@ -270,8 +272,10 @@ def _build_link_candidates(url: str) -> List[str]:
 
     if parsed.scheme and parsed.netloc:
         candidates.append(f"//{parsed.netloc}{path}")
+        if parsed.query:
+            candidates.append(f"//{parsed.netloc}{path}?{parsed.query}")
 
-    if path:
+    if path and not parsed.query:
         candidates.append(path)
 
     if parsed.query:
@@ -280,22 +284,103 @@ def _build_link_candidates(url: str) -> List[str]:
         query_html = parsed.query.replace("&", "&amp;")
         candidates.append(f"{path}?{query_html}")
         if parsed.scheme and parsed.netloc:
+            candidates.append(f"{parsed.scheme}://{parsed.netloc}{path}?{parsed.query}")
             candidates.append(f"{parsed.scheme}://{parsed.netloc}{path}?{query_html}")
             candidates.append(f"//{parsed.netloc}{path}?{query_html}")
 
     return [candidate for candidate in dict.fromkeys(candidates) if candidate]
 
 
-def _link_present_in_html(html: str, broken_link: str) -> Optional[bool]:
+def _link_present_in_html(
+    html: str, broken_link: str, base_url: Optional[str] = None
+) -> Optional[bool]:
     """Determine whether the broken link (or its variants) is still referenced."""
     if not html:
         return None
 
-    candidates = _build_link_candidates(broken_link)
+    candidates = [candidate for candidate in _build_link_candidates(broken_link) if candidate]
+    if not candidates:
+        return None
+
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        soup = BeautifulSoup(html, "html.parser")
+
+    attribute_names = ("href", "src", "data-href", "data-url", "data-link", "action")
+    observed_values: set[str] = set()
+
+    for attr in attribute_names:
+        for tag in soup.find_all(attrs={attr: True}):
+            value = tag.get(attr)
+            if isinstance(value, (list, tuple, set)):
+                for item in value:
+                    if item:
+                        observed_values.add(str(item).strip())
+            elif value:
+                observed_values.add(str(value).strip())
+
+    # Normalize observed values and create additional variants for comparison
+    normalized_values: set[str] = set()
+    for value in observed_values:
+        if not value:
+            continue
+        normalized_values.add(value)
+        normalized_values.add(unescape(value))
+        if base_url:
+            normalized_values.add(urljoin(base_url, value))
+            normalized_values.add(urljoin(base_url, unescape(value)))
+
     for candidate in candidates:
-        if candidate and candidate in html:
+        if candidate in normalized_values:
             return True
-    return False if candidates else None
+
+    # Fallback: look for absolute or query-bearing candidates in raw HTML to catch inline script usage.
+    fallback_candidates = [
+        candidate for candidate in candidates if "?" in candidate or candidate.startswith(("http", "//"))
+    ]
+    for candidate in fallback_candidates:
+        if candidate in html:
+            return True
+
+    return False
+
+
+def _render_page_with_requests_html(
+    url: str,
+    timeout: float,
+    user_agent: Optional[str] = None,
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Attempt to render a page with JavaScript execution using requests_html.
+
+    Returns (html, encoding, error). When requests_html is not installed or
+    rendering fails, html is None and error describes the failure.
+    """
+    try:
+        from requests_html import HTMLSession
+    except ImportError:
+        return None, None, "requests_html is not installed"
+
+    session = HTMLSession()
+    try:
+        headers = {}
+        if user_agent:
+            headers["User-Agent"] = user_agent
+        response = session.get(url, headers=headers, timeout=timeout)
+        try:
+            response.html.render(timeout=timeout, sleep=1)
+            html_text = response.html.html or ""
+            encoding = response.encoding or "utf-8"
+            return html_text, encoding, None
+        except Exception as exc:  # pragma: no cover - depends on JS engine availability
+            return None, None, str(exc)
+        finally:
+            response.close()
+    except Exception as exc:  # pragma: no cover - network/JS engine failures
+        return None, None, str(exc)
+    finally:
+        session.close()
 
 
 def inspect_found_on_page(
@@ -342,14 +427,28 @@ def inspect_found_on_page(
         if verbose:
             print(f"Failed to fetch source page {found_on_url}: {exc}", flush=True)
 
-    if collector is not None:
+    reference_found = _link_present_in_html(html_text, broken_link, found_on_url)
+
+    if reference_found is not True:
+        user_agent = session.headers.get("User-Agent")
+        rendered_html, rendered_encoding, render_error = _render_page_with_requests_html(
+            found_on_url, timeout, user_agent=user_agent
+        )
+        if rendered_html:
+            rendered_match = _link_present_in_html(rendered_html, broken_link, found_on_url)
+            if rendered_match:
+                html_text = rendered_html
+                encoding = rendered_encoding or encoding
+                reference_found = True
+        if render_error and not rendered_html:
+            result["render_error"] = render_error
+
+    if collector is not None and reference_found:
         path, write_error = collector(found_on_url, html_text, encoding)
         if path:
             result["source_path"] = path
         if write_error:
             result["source_error"] = write_error
-
-    reference_found = _link_present_in_html(html_text, broken_link)
 
     result["reference_found"] = reference_found
     result["fetched_at"] = fetched_at
@@ -466,6 +565,8 @@ def validate_entries(
                     validation["source_error"] = source_details["source_error"]
                 if source_details.get("fetch_error"):
                     validation["source_fetch_error"] = source_details["fetch_error"]
+                if source_details.get("render_error"):
+                    validation["source_render_error"] = source_details["render_error"]
                 if source_details.get("reference_found") is not None:
                     validation["reference_found"] = source_details["reference_found"]
                 if source_details.get("fetched_at"):
@@ -595,6 +696,12 @@ def write_validated_report(
             source_error = validation.get("source_error")
             if source_error:
                 lines.append(f"Source Capture Error: {source_error}")
+            fetch_error = validation.get("source_fetch_error")
+            if fetch_error:
+                lines.append(f"Source Fetch Error: {fetch_error}")
+            render_error = validation.get("source_render_error")
+            if render_error:
+                lines.append(f"Source Render Error: {render_error}")
 
         error_text = validation.get("error")
         if error_text:

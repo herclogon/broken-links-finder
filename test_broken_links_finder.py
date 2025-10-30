@@ -27,6 +27,8 @@ import responses
 from broken_links_finder import BrokenLinksFinder, main, print_help
 from validate_broken_links_report import (
     PageSourceCollector,
+    _build_link_candidates,
+    _link_present_in_html,
     parse_report,
     validate_entries,
     write_validated_report,
@@ -1080,6 +1082,35 @@ class TestReportValidation:
         assert "Links Removed: 1" in content
         assert "No links remain broken after validation." in content
         assert "https://example.com/removed" not in content
+
+    def test_build_link_candidates_excludes_plain_path_when_query_present(self):
+        """Ensure query-bearing URLs do not match broader paths."""
+        url = "https://example.com/foo?bar=baz&qux=1"
+        candidates = _build_link_candidates(url)
+        assert "/foo" not in candidates
+        assert "/foo?bar=baz&qux=1" in candidates
+
+    def test_link_present_in_html_detects_relative_link_with_query(self):
+        """Relative query strings should be detected accurately."""
+        base_url = "https://www.example.com/products/item"
+        html = """
+        <html><body>
+        <a href="/foo?bar=baz&amp;qux=1">Broken Link</a>
+        </body></html>
+        """
+        broken_link = "https://www.example.com/foo?bar=baz&qux=1"
+        assert _link_present_in_html(html, broken_link, base_url) is True
+
+    def test_link_present_in_html_ignores_partial_path_matches(self):
+        """Similar URLs without the exact broken target should not match."""
+        base_url = "https://www.example.com/products/item"
+        html = """
+        <html><body>
+        <a href="/catalog/foo?bar=baz">Related Link</a>
+        </body></html>
+        """
+        broken_link = "https://www.example.com/foo?bar=baz&qux=1"
+        assert _link_present_in_html(html, broken_link, base_url) is False
 
 
 if __name__ == "__main__":
